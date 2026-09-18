@@ -1,0 +1,39 @@
+[project]
+name = "paso-backend"
+version = "0.1.0"
+description = "Paso - handwriting review backend (phase 0: recognition + symbolic verification)"
+requires-python = "==3.12.*"
+
+# Exact versions are pinned in uv.lock. Dependency updates are deliberate,
+# once per semester, gated by `pytest` and `python -m app.eval` (SPEC 12.7).
+dependencies = [
+    "anthropic>=0.40",
+    "sympy>=1.13",
+    "numpy>=2.1",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "pyyaml>=6.0",
+    "pillow>=11.0",
+    "rich>=13.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Phase 0 tests never hit the network; the LLM provider is always mocked.
+addopts = "-q"
+
+[tool.uv]
+package = false

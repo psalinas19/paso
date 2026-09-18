@@ -1,0 +1,25 @@
+# Secrets
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Recognition cache: regenerable, can get large. Never a source of truth.
+backend/.cache/
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Node (frontend, from phase 1 on)
+node_modules/
+dist/
