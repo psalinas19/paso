@@ -1,0 +1,64 @@
+slug: ed
+name: Ecuaciones Diferenciales
+notation: ""
+
+complex_domain: false
+independent_vars: [x, t]
+
+strategies:
+  - expression
+  - equation
+  - ode
+  - numeric_iteration
+
+tolerance:
+  absolute: 1.0e-9
+  relative: 1.0e-6
+  hand_rounding: 5.0e-3
+
+topics:
+  - edo-primer-orden
+  - variables-separables
+  - factor-integrante
+  - edo-lineal
+  - edo-exacta
+  - edo-segundo-orden
+  - coeficientes-indeterminados
+  - variacion-parametros
+  - problema-valor-inicial
+
+error_types:
+  - id: sign
+    label: Error de signo
+    description: Signo perdido o cambiado al pasar un término, al integrar o al derivar.
+  - id: chain_rule
+    label: Regla de la cadena
+    description: No se derivó la función interna, o se aplicó donde no correspondía.
+  - id: missing_constant
+    label: Constante de integración
+    description: Falta C tras integrar, o no se usó la condición inicial para determinarla.
+  - id: integration_error
+    label: Integral mal calculada
+    description: La antiderivada no corresponde al integrando.
+  - id: wrong_method
+    label: Método equivocado
+    description: El método aplicado no corresponde al tipo de ecuación.
+  - id: algebra
+    label: Álgebra
+    description: Error al despejar, factorizar o simplificar, sin relación con el método.
+  - id: initial_condition
+    label: Condición inicial mal aplicada
+    description: Se sustituyó mal, o se aplicó antes de tiempo.
+
+notation_notes: |
+  Escribo la variable dependiente como y y la independiente como x o t según el problema.
+  Uso ' para derivadas (y', y'') y a veces dy/dx en el mismo desarrollo: son lo mismo.
+  La constante de integración la escribo C, C1, C2.
+  A veces escribo el paso de integración con el símbolo de integral en ambos lados
+  antes de evaluar; eso es un paso legítimo, no un resultado.
+
+tutor_notes: |
+  Antes de corregir, di de qué tipo es la ecuación y por qué el método aplica:
+  qué condición del enunciado lo habilita. Si el método era válido pero se aplicó mal,
+  distínguelo de haber elegido el método equivocado, porque el repaso no es el mismo.
+  Al verificar, sustituye la solución en la ecuación original.

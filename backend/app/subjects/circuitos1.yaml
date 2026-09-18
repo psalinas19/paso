@@ -1,0 +1,73 @@
+slug: circuitos1
+name: Circuitos Eléctricos I
+notation: Hayt
+
+# Phase 0 covers DC only (ADR 0001), so there is no imaginary unit yet and
+# symbols like I_1 / I_x are plain currents. Flipping this to true when AC
+# arrives makes 'j' the imaginary unit and forbids bare 'I' (ADR 0002).
+complex_domain: false
+independent_vars: [t]
+
+strategies:
+  - expression
+  - equation
+  - system
+  - numeric_iteration
+
+tolerance:
+  absolute: 1.0e-9
+  relative: 1.0e-6
+  hand_rounding: 5.0e-3
+
+topics:
+  - ley-de-ohm
+  - kirchhoff
+  - analisis-nodal
+  - analisis-mallas
+  - divisor-voltaje
+  - divisor-corriente
+  - thevenin-norton
+  - superposicion
+  - potencia
+  - maxima-transferencia
+
+error_types:
+  - id: kcl
+    label: LCK mal aplicada
+    description: Corrientes que entran y salen de un nodo con el signo equivocado, o un ramal omitido.
+  - id: kvl
+    label: LVK mal aplicada
+    description: Recorrido de malla inconsistente, o caída de tensión con el signo equivocado.
+  - id: passive_sign
+    label: Convención pasiva de signos
+    description: Polaridad y sentido de corriente inconsistentes en un elemento.
+  - id: series_parallel
+    label: Serie y paralelo confundidos
+    description: Se combinaron como serie elementos en paralelo, o al revés.
+  - id: divider
+    label: Divisor mal planteado
+    description: Divisor de voltaje o de corriente con la resistencia equivocada en el numerador.
+  - id: units
+    label: Unidades
+    description: Prefijos mal convertidos (k, m, µ) o unidades inconsistentes.
+  - id: algebra
+    label: Álgebra
+    description: Error al resolver el sistema, sin relación con el planteamiento del circuito.
+  - id: sign
+    label: Error de signo
+    description: Signo perdido o cambiado fuera del planteamiento de Kirchhoff.
+
+notation_notes: |
+  Sigo la notación de Hayt. Los voltajes de nodo los escribo V_1, V_2, v_a;
+  las corrientes de malla I_1, I_2, i_x; las resistencias R_1, R_2, R_eq.
+  En DC no uso fasores ni números complejos.
+  Escribo las unidades junto al número (10 kΩ, 5 mA): al transcribir, el número
+  va en la expresión ya convertido a unidades SI base y las unidades van en las notas.
+  Al plantear análisis nodal escribo una ecuación por nodo, cada una independiente:
+  son pasos hermanos, ninguno se deriva del anterior.
+
+tutor_notes: |
+  Usa la notación de Hayt y unidades SI. Revisa la coherencia de unidades
+  cuando el resultado sea numérico.
+  Si el error está en el planteamiento (LCK, LVK, convención de signos), dilo antes
+  de hablar del álgebra: resolver bien un sistema mal planteado no sirve de nada.
