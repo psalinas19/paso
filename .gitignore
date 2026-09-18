@@ -15,6 +15,12 @@ venv/
 # Recognition cache: regenerable, can get large. Never a source of truth.
 backend/.cache/
 
+# Local API spend log. Machine-specific runtime data, not source.
+backend/usage.jsonl
+
+# Local Claude Code settings
+.claude/settings.local.json
+
 # OS
 Thumbs.db
 desktop.ini

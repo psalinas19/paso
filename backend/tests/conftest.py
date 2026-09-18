@@ -7,6 +7,17 @@ from app.subjects.loader import SubjectConfig, load_subject
 from app.verification.runner import verify
 
 
+@pytest.fixture(autouse=True)
+def isolate_side_effects(tmp_path, monkeypatch):
+    """No test may write into the project directory.
+
+    Without this, anything exercising recognition appends fake-model rows to
+    the real backend/usage.jsonl and fills backend/.cache with test fixtures.
+    """
+    monkeypatch.setattr("app.llm.usage.USAGE_LOG", tmp_path / "usage.jsonl")
+    monkeypatch.setattr("app.recognition.cache.CACHE_DIR", tmp_path / "cache")
+
+
 @pytest.fixture
 def ed() -> SubjectConfig:
     return load_subject("ed")

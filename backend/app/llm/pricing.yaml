@@ -1,0 +1,37 @@
+# Token prices in USD per million tokens.
+#
+# This is configuration, not constants in code, because it goes stale (D4).
+# Record where it came from and when, so the next person to touch it knows
+# whether to trust it.
+#
+# source: Anthropic pricing documentation, via the claude-api skill
+# retrieved: 2026-06-24
+# checked_by: claude-code, 2026-09-17
+#
+# Re-check once per semester along with the dependency update (SPEC 12.7).
+
+defaults:
+  # Multipliers applied to the input price. Cache writes cost more than plain
+  # input; cache reads cost far less.
+  cache_write_multiplier: 1.25
+  cache_read_multiplier: 0.1
+
+models:
+  claude-sonnet-5:
+    input_per_mtok: 2.00
+    output_per_mtok: 10.00
+  claude-opus-5:
+    input_per_mtok: 5.00
+    output_per_mtok: 25.00
+  claude-haiku-4-5:
+    input_per_mtok: 1.00
+    output_per_mtok: 5.00
+  claude-opus-4-8:
+    input_per_mtok: 5.00
+    output_per_mtok: 25.00
+  claude-sonnet-4-6:
+    input_per_mtok: 3.00
+    output_per_mtok: 15.00
+  claude-fable-5-1:
+    input_per_mtok: 10.00
+    output_per_mtok: 50.00
