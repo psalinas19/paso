@@ -22,8 +22,8 @@ La primera versión tenía un canvas por página, escalado con una transformaci�
 **Un registro de IndexedDB por trazo.** El autoguardado escribe solo el trazo nuevo. Borrar, mover y deshacer son operaciones «estos trazos se reemplazan por estos», que es también la unidad del historial de deshacer.
 
 **El contorno no se guarda.** Se guardan los puntos centrales; el contorno visible se calcula al dibujar (`perfect-freehand`). Así cambiar el aspecto del trazo no invalida datos. Dos ajustes salieron de probar en el iPad:
-- `streamline: 0`: el suavizado recortaba cerca de una cuarta parte de cada esquina en trazos rápidos.
 - Los huecos entre muestras lejanas se rellenan con una curva (Catmull-Rom) antes de calcular el contorno; sin eso los trazos rápidos salían adelgazados.
+- `streamline` (el suavizado del temblor de la mano) solo es seguro después de ese relleno: sobre muestras lejanas recortaba cerca de una cuarta parte de cada esquina. Queda en `0.2`.
 
 **Las formas son trazos comunes.** Recta, elipse, triángulo y rectángulo se reconocen al mantener el lápiz quieto y se guardan como puntos de un trazo normal. No hay un tipo «forma» en el formato, y el lazo las mueve y estira como a cualquier trazo.
 
