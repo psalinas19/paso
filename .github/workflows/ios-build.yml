@@ -40,6 +40,8 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npx cap sync ios
+      - name: Show what the project offers to build
+        run: xcodebuild -list -project ios/App/App.xcodeproj
       - name: Build for the simulator, unsigned
         run: |
           xcodebuild -project ios/App/App.xcodeproj -scheme App \
