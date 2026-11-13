@@ -10,7 +10,15 @@ Libreta inteligente para iPad que revisa, corrige y explica desarrollos de ingen
 - **Usuario:** un solo usuario (yo). Estudiante de Ingeniería en Automatización y Control (UAQ), con experiencia en Python, C++, Django/DRF y PLCs.
 - **Dispositivos:** iPad con Apple Pencil para escribir; laptop Windows (Lenovo P15) para desarrollar. **No tengo Mac.**
 - **Horizonte:** la app se usará **durante toda la carrera** (varios años y semestres). Ver sección 12; las decisiones de diseño deben respetarla.
-- **Materias iniciales:** Ecuaciones Diferenciales, Circuitos Eléctricos I (notación de Hayt), Dinámica y Métodos Numéricos. Cada semestre se agregarán materias nuevas (control, señales y sistemas, electrónica, máquinas eléctricas, etc.) **sin tocar código**.
+- **Sin internet en clase:** en la universidad muchas veces no hay conexión. Escribir y consultar notas (y revisiones ya hechas) funciona **100% offline**; la IA solo se usa cuando hay internet (6.9).
+- **Referencia:** la app Derive. Se toma lo esencial de sus flujos (lápiz, presentación de correcciones); no se copia marca, nombre, logos ni assets.
+- **Materias iniciales:** Ecuaciones Diferenciales, Circuitos Eléctricos I (notación de Hayt), Dinámica y Métodos Numéricos. Cada semestre se agregarán materias nuevas **sin tocar código**.
+- **Materias previstas en la carrera** (el tutor debe poder con material avanzado, no solo álgebra):
+  - Matemáticas: cálculo multivariable, Laplace y Z, álgebra lineal, series de Fourier.
+  - Control: funciones de transferencia, diagramas de bloques, lugar de las raíces, Bode y Nyquist, espacio de estados, PID, control digital.
+  - Circuitos y electrónica: nodal y mallas, RLC, fasores, amplificadores operacionales, electrónica de potencia.
+  - Mecánica: estática, dinámica, cuerpo libre, vibraciones, modelado mecánico y electromecánico.
+  - Automatización: escalera, diagramas de estados, GRAFCET, neumática e hidráulica, sensores y actuadores.
 - **Objetivo:** escribir a mano como en un cuaderno, seleccionar un desarrollo y obtener tres cosas:
   1. En qué paso me equivoqué y por qué.
   2. La solución correcta explicada.
@@ -50,15 +58,17 @@ Libreta inteligente para iPad que revisa, corrige y explica desarrollos de ingen
 - Banco de errores.
 - Modo repaso.
 - Exportar a PDF y LaTeX.
-- Respaldo en el servidor.
+- Graficar ecuaciones escritas a mano (2D primero).
+- Respaldo en el servidor y exportación JSON + PDF para guardar en Nextcloud.
 - Límite de gasto de API.
+- Uso offline: notas e historial de revisiones sin conexión, y cola de revisiones pendientes.
 
 **Fuera (no implementar):**
 - App nativa.
 - Sincronización multiplataforma o multi-dispositivo.
 - Cuentas o multiusuario, y colaboración.
 - Revisión en vivo trazo por trazo.
-- Reconocimiento estructural de diagramas: circuitos, DCL, gráficas. El modelo puede *comentar* diagramas que vea en la imagen, pero no se verifican simbólicamente.
+- Verificación simbólica de diagramas (circuitos, bloques, DCL, Bode, escalera). El modelo **sí debe leerlos y revisarlos** (convenciones, signos, modelado), pero su juicio queda como `no verificable`.
 - Grabación de audio.
 - Importar PDFs.
 
@@ -67,6 +77,7 @@ Libreta inteligente para iPad que revisa, corrige y explica desarrollos de ingen
 - **Frontend:** PWA con React + Vite + TypeScript. Se usa en Safari de iPadOS, instalada en la pantalla de inicio.
   - Tinta: Pointer Events (`pointerType === "pen"`, `pressure`) y `perfect-freehand` para el trazo. Usa `getCoalescedEvents` y `getPredictedEvents` si están disponibles.
   - Almacenamiento local: IndexedDB con Dexie.
+  - Offline: service worker que cachea toda la app (app shell).
   - Render de matemáticas: KaTeX. Render del chat: Markdown.
   - Exportar a PDF: jsPDF.
 - **Backend:** Python 3.12 con FastAPI.
@@ -75,6 +86,7 @@ Libreta inteligente para iPad que revisa, corrige y explica desarrollos de ingen
   - IA: SDK oficial `anthropic`.
   - Respuestas del chat: streaming por SSE.
 - **Modelo:** configurable por variable de entorno `ANTHROPIC_MODEL`, con valor por defecto `claude-sonnet-5`. Usa visión para leer la imagen y salida JSON estructurada (tool use) para la transcripción. **Consulta la documentación actual de Anthropic para el uso del SDK en lugar de depender de memoria.**
+  - Las revisiones usan el modelo más capaz que el eval justifique (12.4). `ANTHROPIC_MODEL_CHAT` (opcional) permite un modelo más barato para dudas simples del chat; si no se define, se usa `ANTHROPIC_MODEL`.
 - **Desarrollo en Windows:**
   - El README debe explicar cómo correr todo en Windows.
   - Para probar en el iPad hace falta HTTPS, porque la PWA y el service worker lo requieren. Usa un túnel (p. ej. `cloudflared`) y documéntalo.
@@ -101,17 +113,18 @@ iPad (PWA)                                   Backend (FastAPI)
 - **Fuente de verdad a largo plazo:** el servidor. Safari puede borrar almacenamiento local y el iPad tiene espacio limitado, así que el iPad no se trata como almacén permanente.
   - Pedir `navigator.storage.persist()` al iniciar la app.
   - Al archivar un semestre, sus cuadernos salen del iPad y se descargan bajo demanda (solo lectura por defecto).
-- **Revisiones, chats, banco de errores y registro de uso:** viven en el backend (SQLite).
+- **Revisiones, chats, banco de errores y registro de uso:** viven en el backend (SQLite). El iPad guarda en IndexedDB una copia de las revisiones y chats del semestre en curso para consultarlos sin conexión.
+- **La API key nunca vive en el iPad** ni aparece en el código del frontend; el backend es el único que habla con Anthropic.
 
 ## 6. Módulos
 
 ### 6.1 Canvas
-- **Páginas:** tamaño carta con fondo cuadriculado (opciones: cuadrícula, rayado, blanco) y scroll vertical. Se agrega una página nueva al final.
+- **Páginas:** tamaño carta con fondo cuadriculado (opciones: cuadrícula, rayado, blanco) y scroll vertical. Se agrega una página nueva al final. Cuadernos y páginas se pueden crear, renombrar, borrar y reordenar.
 - **Entrada por tipo:**
   - El Pencil dibuja.
   - Un dedo hace scroll y dos dedos hacen zoom.
   - Rechazo de palma: ignorar el toque mientras el Pencil está activo.
-- **Herramientas:**
+- **Herramientas:** en una barra flotante centrada arriba, con plumas preconfiguradas que muestran su color (un toque cambia de pluma, sin abrir menús).
   - Pluma con 3 grosores y 4 colores.
   - Resaltador.
   - Borrador por trazo.
@@ -120,7 +133,7 @@ iPad (PWA)                                   Backend (FastAPI)
 - **Ajustes de Safari:** `touch-action: none` en el canvas y desactivar la selección de texto y el menú contextual de iOS.
 - **Guardado:** los trazos se guardan como vectores (puntos + presión) y hay autoguardado.
 - **Rendimiento:** el trazo debe sentirse inmediato. Meta: sin retraso perceptible ni saltos, y renderizado incremental (no redibujar toda la página por trazo).
-- **Revisar:** exporta la región seleccionada como PNG a buena resolución y fondo blanco.
+- **Revisar:** exporta la región seleccionada (o la página completa si no hay selección) como PNG con fondo blanco, a la resolución mínima que siga siendo legible, para ahorrar tokens.
 
 ### 6.2 Reconocimiento (`/recognize`)
 - **Entrada:** imagen de la selección y materia.
@@ -155,6 +168,12 @@ Compara cada paso con el anterior según su `kind`:
 ### 6.4 Tutor: niveles 1–3 y solución (`/check`, `/solve`)
 - **`/check`:** usa la transcripción y la verificación para generar la pista (nivel 1).
 - **Nivel 2:** da el paso corregido y la explicación del error.
+- **Presentación sobre la hoja** (tomada del análisis de Derive):
+  - Cada paso revisado lleva una marca pequeña junto a su renglón: ✓ verde, ✕ rojo o ⚠️ ámbar. El paso con error se subraya en rojo.
+  - Tocar una marca abre una tarjeta anclada junto al paso: tipo de error como título, la **pista** (nivel 1) y un enlace «Ver explicación completa».
+  - La explicación completa (nivel 2) muestra el paso tal como se leyó, en rojo, un bloque **Por qué** y un bloque **Siguiente paso**, seguidos de 2–3 preguntas sugeridas que abren el chat con esa pregunta.
+  - La tarjeta se puede fijar o cerrar. Al corregir y volver a revisar, las marcas se actualizan.
+  - Para anclar marcas y tarjetas, el reconocimiento debe devolver la posición de cada paso en la imagen. Es un cambio al contrato de 6.2: se decide en el plan de la Fase 2 y se mide con `app.eval` (12.4).
 - **`/solve` (nivel 3):** genera la solución completa **en formato de pasos estructurados** (mismo JSON que 6.2) más una explicación en Markdown.
   - **Toda solución generada pasa por el verificador.** La UI muestra una insignia: "Solución verificada simbólicamente" o "Solución no verificada: revísala con cuidado".
   - Si el verificador encuentra un error en la solución del modelo, se le pide que la corrija una vez; si persiste, se muestra la advertencia.
@@ -169,6 +188,7 @@ Compara cada paso con el anterior según su `kind`:
 - **Contexto que recibe:** imagen, transcripción, resultados de verificación, niveles ya mostrados, materia y mensajes previos.
 - Respuestas en streaming, con Markdown y KaTeX.
 - Puedo adjuntar una nueva selección del canvas al chat.
+- Usa `ANTHROPIC_MODEL_CHAT` si está definido (sección 4).
 
 ### 6.6 Banco de errores y repaso
 - **Registro:** cada error confirmado se guarda con `materia`, `tema`, `tipo_error`, `fecha`, `check_id` y `resuelto`.
@@ -181,13 +201,25 @@ Compara cada paso con el anterior según su `kind`:
 - **Modo examen (opcional en el repaso):** los niveles de ayuda se bloquean hasta que termine el ejercicio.
 
 ### 6.7 Exportar
-- Una página o un cuaderno a PDF.
+- Una página o un cuaderno a PDF. **Siempre disponible, también sin conexión**, y debe verse bien: trazos vectoriales (nítidos al hacer zoom, no una captura de pantalla), con los mismos colores, grosores y fondo que en pantalla.
 - Una revisión (transcripción + solución) a LaTeX, para reportes.
+
+### 6.10 Graficar
+- Selecciono con el lazo una ecuación escrita a mano y toco **Graficar**: la app la reconoce (6.2) y muestra la gráfica en una tarjeta junto a la ecuación, que se puede fijar o cerrar.
+- **Primero 2D** (`y = f(x)`), con zoom y desplazamiento. Las superficies 3D (`z = f(x, y)`) se agregan después, solo si el 2D resulta útil en clase.
+- La gráfica se calcula a partir del campo `sympy` del paso; si no se pudo parsear, la app lo dice en vez de graficar algo inventado.
+- Requiere conexión para reconocer la ecuación; una gráfica ya generada se conserva con la página y se ve offline.
+- Respaldo manual: cuaderno a JSON (formato de trazos documentado) + PDF, descargable desde el iPad para guardarlo en Nextcloud.
 
 ### 6.8 Control de costos
 - Cada llamada al API se registra con tokens de entrada/salida y costo estimado.
 - Límite mensual configurable (`MONTHLY_BUDGET_USD`): al alcanzarlo, el backend rechaza llamadas con un mensaje claro.
-- La interfaz muestra el gasto del mes.
+- La interfaz muestra el costo aproximado de cada revisión y el gasto acumulado del mes.
+
+### 6.9 Offline
+- Con el iPad en modo avión la app abre y se puede escribir, navegar cuadernos, exportar a PDF y leer revisiones y chats ya hechos.
+- **Cola de revisiones:** si no hay internet, **Revisar** guarda la selección (imagen + trazos + materia) en una cola local y avisa. Al volver la conexión, la app lo indica y yo decido cuándo procesar la cola; no se envía sola, para no gastar sin que me entere.
+- El chat y los niveles 2–3 requieren conexión; la interfaz lo dice en vez de fallar en silencio.
 
 ## 7. API (contrato inicial)
 
@@ -229,8 +261,8 @@ Los prompts de sistema viven en archivos separados (`backend/prompts/`) para que
 3. En el nivel 1, **no** revelar la respuesta.
 4. Separar siempre lo verificado simbólicamente de lo que es solo opinión del modelo.
 5. Explicar el *porqué*: qué método aplica, qué condiciones requiere y qué error conceptual hay detrás de un error.
-6. Usar la notación de la materia (Circuitos: Hayt) y unidades SI; en ingeniería, revisar unidades cuando aplique.
-7. Salidas estructuradas siempre en JSON válido según el esquema; LaTeX con delimitadores compatibles con KaTeX.
+6. Usar la notación de la materia (Circuitos: Hayt) y unidades SI. Revisar unidades y coherencia física, no solo el álgebra: señalar errores de signo, de convención y de modelado, también en diagramas.7. Salidas estructuradas siempre en JSON válido según el esquema; LaTeX con delimitadores compatibles con KaTeX.
+8. No resolver más de lo necesario a menos que yo lo pida.
 
 ## 10. Plan por fases
 
@@ -247,11 +279,13 @@ Cada fase termina con criterios de aceptación y **se detiene** para que yo prue
 - Estas fotos, con su transcripción correcta, se guardan como **banco de pruebas permanente** (`/eval`), con un comando `python -m app.eval` que da el porcentaje de aciertos. Se ampliará cada semestre con ejercicios de las materias nuevas.
 
 **Fase 1: canvas y cuadernos**
-- PWA instalable, estructura semestre → materia → cuaderno, herramientas de 6.1, autoguardado en IndexedDB.
+- Antes de diseñar: análisis breve de Derive (flujos, interacción del lápiz, cómo presenta las correcciones) y lista de lo esencial a adoptar.
+- PWA instalable y offline (service worker), estructura semestre → materia → cuaderno, herramientas de 6.1, autoguardado en IndexedDB.
 - Las materias se crean desde la app con una plantilla de configuración; no se hardcodean.
 - Formato de trazos documentado y versionado desde el día uno.
 - Túnel HTTPS para probar en el iPad.
-- ✅ Criterios: escribir se siente fluido, la palma no raya, zoom y scroll funcionan, y los datos sobreviven al cerrar la app.
+- Exportar página o cuaderno a PDF y a JSON (6.7).
+- ✅ Criterios: se instala desde Safari y abre en modo avión, escribir se siente fluido, la palma no raya, zoom y scroll funcionan, ninguna nota se pierde al cerrar la app o reiniciar el iPad, y el PDF exportado en modo avión se ve igual que la página y sigue nítido al ampliarlo.
 
 **Fase 2: Revisar (nivel 1)**
 - Flujo lazo → transcripción editable → verificación → pista, con el backend de 6.2–6.4.
@@ -259,11 +293,13 @@ Cada fase termina con criterios de aceptación y **se detiene** para que yo prue
 
 **Fase 3: niveles 2–3 y chat**
 - Paso corregido, solución completa verificada con insignia, chat con streaming e historial.
-- ✅ Criterio: una solución errónea del modelo se detecta y se marca.
+- Cola de revisiones offline e historial de revisiones consultable sin conexión (6.9).
+- ✅ Criterios: una solución errónea del modelo se detecta y se marca; una revisión pedida en modo avión se procesa al volver la conexión.
 
 **Fase 4: banco de errores, repaso, búsqueda y exportar**
 - Secciones 6.6 y 6.7, más la búsqueda de texto completo.
-- ✅ Criterio: el repaso genera ejercicios según mis errores reales.
+- Graficar en 2D (6.10).
+- ✅ Criterios: el repaso genera ejercicios según mis errores reales; una ecuación escrita a mano se grafica correctamente.
 
 **Fase 5: despliegue**
 - Propón 2 opciones de hosting baratas con costo estimado y espera mi decisión.
@@ -281,6 +317,7 @@ Cada fase termina con criterios de aceptación y **se detiene** para que yo prue
 - Commits pequeños y descriptivos; un commit al cerrar cada fase.
 - Escribe tests para el verificador y para los endpoints críticos.
 - Si una decisión de este spec resulta mala en la práctica, avísame con la alternativa antes de cambiarla.
+- Explica en español las decisiones técnicas importantes: el objetivo también es que yo aprenda. Código simple y comentado.
 - Mantén un `CLAUDE.md` corto con comandos para correr, probar y hacer lint, más las decisiones tomadas.
 - Estructura sugerida:
   ```
