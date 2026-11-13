@@ -184,6 +184,21 @@ Debajo de cada paso hay un enlace **Corregir lectura**. Escribe el paso en LaTeX
 - Si el backend no logra convertir lo que escribiste a una forma comprobable, el paso queda como **no verificable**, nunca como error.
 - Cada corrección es una llamada pequeña al modelo y se suma al costo de la revisión.
 
+### Las tres ayudas
+
+Después de revisar, el panel ofrece tres botones. Ninguno se pide solo, porque cada uno cuesta unos centavos:
+
+- **Pista:** dónde mirar, sin dar la respuesta.
+- **Explícame:** de qué tipo es el problema y por qué aplica el método, un comentario junto a cada paso (por qué está bien, o qué idea hay detrás del error), cómo debió quedar el paso que falla y qué hacer a continuación si te quedaste a medias.
+- **Ver solución:** el problema resuelto paso a paso, con el porqué de cada uno.
+
+Lo que el modelo propone como correcto se comprueba con matemáticas antes de mostrártelo:
+
+- El paso corregido de la explicación aparece en verde si se comprobó, en ámbar si no se pudo comprobar, y **no aparece** si resultó estar mal.
+- La solución lleva la insignia «Solución verificada simbólicamente» solo si todas sus fórmulas se comprobaron, partiendo de lo que tú escribiste. Si no, dice «no verificada: revísala con cuidado».
+
+Si en la hoja solo está el enunciado, el panel lo dice («Solo veo el enunciado») en vez de decir que todo está bien.
+
 ### La pista
 
 Cuando la lectura esté bien, toca **Pedir pista**. Aparecen dos recuadros que nunca se mezclan:
@@ -224,7 +239,7 @@ py -3.12 -m uv run python -m app.case confirm ed-01
 
 De la Fase 2:
 
-- **Probar la entrega 2b con el modelo real y en el iPad.** Corregir un paso, la pista y el comando `app.case` están construidos y probados con un modelo simulado; nunca se han ejecutado contra el API de Anthropic ni en el iPad.
+- **Probar con el modelo real.** Corregir un paso, la pista, la explicación, la solución y el comando `app.case` están construidos y probados con un modelo simulado. La conexión y la lectura ya funcionan en el iPad; el resto no se ha ejecutado contra el API de Anthropic.
 - **Medir.** Llenar el banco de pruebas y sacar la línea base con `app.eval`. Sin eso no se sabe qué tan bien lee el modelo ni si la pista es buena, y no se puede ajustar ningún prompt (SPEC §12.4).
 - **Entrega 2c:** la posición de cada paso y las marcas sobre la hoja.
 

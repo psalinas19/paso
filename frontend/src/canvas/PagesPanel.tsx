@@ -6,7 +6,7 @@ import { BACKGROUND_COLOR, backgroundLines, PAGE_H, PAGE_W } from "./view";
 const THUMB_W = 132; // CSS px
 
 /** One page drawn small, from its strokes. Drawn only once it scrolls into view. */
-function Thumbnail({ page }: { page: Page }) {
+export function Thumbnail({ page, width = THUMB_W }: { page: Page; width?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = ref.current!;
@@ -15,7 +15,7 @@ function Thumbnail({ page }: { page: Page }) {
       const strokes = await loadStrokes(page.id);
       if (cancelled) return;
       const dpr = window.devicePixelRatio || 1;
-      const scale = (THUMB_W / PAGE_W) * dpr;
+      const scale = (width / PAGE_W) * dpr;
       canvas.width = Math.round(PAGE_W * scale);
       canvas.height = Math.round(PAGE_H * scale);
       const ctx = canvas.getContext("2d")!;
@@ -50,8 +50,8 @@ function Thumbnail({ page }: { page: Page }) {
       cancelled = true;
       observer.disconnect();
     };
-  }, [page.id, page.background]);
-  return <canvas ref={ref} style={{ width: THUMB_W, height: (THUMB_W * PAGE_H) / PAGE_W }} />;
+  }, [page.id, page.background, width]);
+  return <canvas ref={ref} style={{ width, height: (width * PAGE_H) / PAGE_W }} />;
 }
 
 /** Side panel with every page of the notebook small: tap one to go there. */

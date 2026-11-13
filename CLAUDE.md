@@ -26,7 +26,7 @@ npm run deploy         # publica en https://paso-libreta.paso-frontend.workers.d
 
 ## Estado
 
-Fase 2, entregas 2a y 2b construidas ([ADR 0007](docs/decisions/0007-fase2-api.md)): la libreta manda la selección del lazo a `POST /api/check`, muestra transcripción y verificación, deja corregir un paso mal leído y pedir la pista de nivel 1; `app.case` convierte revisiones guardadas en casos del banco. **2b solo se ha probado con el proveedor simulado**: ni los prompts `restructure` y `hint` ni el adaptador se han ejecutado contra el API real, y nada se ha probado en el iPad. Falta 2c (marcas sobre la hoja). **Nada de calidad del modelo está medido: `eval/cases/` está vacío.** El [plan de mecánicas y app nativa](docs/plan-mecanicas-y-app-nativa.md) está aprobado (2026-11-13): las dos primeras tandas (deshacer con dedos, duplicar, esquinas proporcionales, indicador y panel de páginas, garabatear para borrar apagado de fábrica, flecha y rectas que se enderezan) y la importación de JSON están construidas, **sin probar en el iPad**. No se paga la cuenta de Apple: la parte nativa se hará con una Mac prestada y cuenta gratuita (la app caduca cada 7 días), como complemento de la PWA, no como reemplazo. El envoltorio de Capacitor está en `frontend/ios/` ([guía](docs/app-nativa.md)): compila en GitHub Actions (Xcode 26.6, simulador, sin firmar) y **nunca se ha ejecutado en un dispositivo**. El [plan de la entrega 2c](docs/plan-fase2c-marcas.md) está **aprobado** (2026-11-13) y sin construir: la etapa 1 espera el resultado de la primera prueba en el iPad; la etapa 2 espera la línea base del banco de pruebas. Fase 1 sigue en prueba en el iPad ([ADR 0006](docs/decisions/0006-fase1-frontend.md)).
+Fase 2, entregas 2a y 2b construidas ([ADR 0007](docs/decisions/0007-fase2-api.md)): la libreta manda la selección del lazo a `POST /api/check`, muestra transcripción y verificación, deja corregir un paso mal leído y pedir la pista de nivel 1; `app.case` convierte revisiones guardadas en casos del banco. **2b solo se ha probado con el proveedor simulado**: ni los prompts `restructure` y `hint` ni el adaptador se han ejecutado contra el API real, y nada se ha probado en el iPad. Tras la primera prueba en el iPad (la revisión conecta y lee, pero «no aportaba») se adelantaron los niveles 2 y 3 ([ADR 0008](docs/decisions/0008-niveles-2-y-3.md)): *Explícame* y *Ver solución*, también **solo probados con el modelo simulado**; y la biblioteca muestra los cuadernos como portadas. Falta 2c (marcas sobre la hoja). **Nada de calidad del modelo está medido: `eval/cases/` está vacío.** El [plan de mecánicas y app nativa](docs/plan-mecanicas-y-app-nativa.md) está aprobado (2026-11-13): las dos primeras tandas (deshacer con dedos, duplicar, esquinas proporcionales, indicador y panel de páginas, garabatear para borrar apagado de fábrica, flecha y rectas que se enderezan) y la importación de JSON están construidas, **sin probar en el iPad**. No se paga la cuenta de Apple: la parte nativa se hará con una Mac prestada y cuenta gratuita (la app caduca cada 7 días), como complemento de la PWA, no como reemplazo. El envoltorio de Capacitor está en `frontend/ios/` ([guía](docs/app-nativa.md)): compila en GitHub Actions (Xcode 26.6, simulador, sin firmar) y **nunca se ha ejecutado en un dispositivo**. El [plan de la entrega 2c](docs/plan-fase2c-marcas.md) está **aprobado** (2026-11-13) y sin construir: la etapa 1 espera el resultado de la primera prueba en el iPad; la etapa 2 espera la línea base del banco de pruebas. Fase 1 sigue en prueba en el iPad ([ADR 0006](docs/decisions/0006-fase1-frontend.md)).
 
 ## Arquitectura
 
@@ -36,7 +36,7 @@ app/subjects/             una materia = un YAML (SPEC 12.5)
 app/llm/                  proveedor de IA detrás de LLMProvider (SPEC 12.3)
 app/recognition/          imagen -> pasos
 app/verification/         pasos -> estados, registro de estrategias
-app/tutor/                pasos + verificación -> corrección de un paso, pista de nivel 1
+app/tutor/                pasos + verificación -> corrección de un paso, pista, explicación, solución
 app/prompts/              un archivo por prompt; su hash es la versión
 app/evaluation/           métricas del banco de pruebas; borradores de casos
 app/poc.py, app/eval.py, app/case.py   los CLIs
@@ -68,6 +68,7 @@ frontend/ios/                 proyecto de Xcode generado por Capacitor; PencilPl
 | [0005](docs/decisions/0005-structured-output.md) | Salida estructurada en vez de tool use |
 | [0006](docs/decisions/0006-fase1-frontend.md) | Lienzo imperativo, dos capas, coordenadas en puntos PDF, despliegue |
 | [0007](docs/decisions/0007-fase2-api.md) | API HTTP: token, límite de gasto, verificador precalentado, banco de pruebas con tinta real |
+| [0008](docs/decisions/0008-niveles-2-y-3.md) | Explicación y solución: qué decide el verificador y qué el modelo; la solución parte de los datos del alumno |
 
 ## Reglas que no son obvias en el código
 
@@ -97,6 +98,9 @@ frontend/ios/                 proyecto de Xcode generado por Capacitor; PencilPl
 
 22. **Un archivo Swift nuevo hay que darlo de alta a mano en `frontend/ios/App/App.xcodeproj/project.pbxproj`** (cuatro entradas, copia las de `PencilPlugin.swift`): el proyecto no detecta archivos solo. `npx cap sync ios` no lo hace por ti. La compilación de `.github/workflows/ios-build.yml` es la única comprobación sin Mac.
 23. **La app nativa es otro origen** (`capacitor://localhost`): sus notas son un almacén aparte y el backend debe tenerlo en `ALLOWED_ORIGINS`.
+
+24. **Lo que el modelo propone como correcto pasa por el verificador antes de mostrarse.** El paso corregido de la explicación se descarta si el verificador lo demuestra falso; la solución solo lleva insignia si todas sus fórmulas se comprobaron. La solución parte de los pasos `given` del alumno, y un paso del modelo nunca puede ser `given` (`app/tutor/solve.py`): el verificador acepta los datos sin revisarlos.
+25. **«Sin errores» no es «correcto».** Con solo el enunciado en la hoja no se comprobó nada: el resumen y la pista lo dicen así, y un dato lleva marca neutra, no palomita (`summarise` en `frontend/src/review/merge.ts`).
 
 ## Idioma
 

@@ -65,6 +65,10 @@ Aprobada en [el plan de mecánicas](../plan-mecanicas-y-app-nativa.md). Probada 
 
 **Las entradas del menú ⋯ van con clave por posición.** Con clave por texto, un ajuste cuyo rótulo cambia al tocarlo se reemplazaba a medio toque, el menú no se cerraba y el siguiente trazo se perdía cerrándolo.
 
+### Biblioteca con portadas (2026-11-13)
+
+En la prueba en el iPad no era obvio que el nombre de un cuaderno se podía tocar. Ahora cada cuaderno es una **portada**: la miniatura de su primera página con un lomo, el título y cuántas páginas tiene. Al tocarla se hunde un poco. Renombrar, mover y borrar pasaron a un menú **⋯** en la esquina de cada portada, para que lo principal (abrir) sea lo único grande. «Nuevo cuaderno» es una portada punteada con un **+**.
+
 ## Limitaciones conocidas
 
 - **El doble toque del Apple Pencil no existe para la web.** Safari no lo expone. El borrador es de un solo uso, desde la barra (SPEC §6.1). Un doble toque con el dedo se probó como sustituto y se retiró: la mano apoyada lo activaba por accidente.

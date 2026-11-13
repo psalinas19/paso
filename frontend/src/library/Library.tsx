@@ -1,11 +1,15 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState, type FormEvent } from "react";
-import { db } from "../db";
+import { Thumbnail } from "../canvas/PagesPanel";
+import { db, type Page } from "../db";
 import { ImportError, importNotebookFile } from "../export/notebook";
 import {
   createNotebook, createSemester, createSubject, deleteNotebook, deleteSemester, deleteSubject,
   moveNotebook, rename, TEMPLATES,
 } from "./actions";
+
+/** Width of a notebook cover, in CSS px: big enough to recognise the first page and to hit with a finger. */
+const COVER_W = 132;
 
 interface Props {
   onOpen(notebookId: string): void;
@@ -50,6 +54,7 @@ export function Library({ onOpen, onError }: Props) {
     semesters: (await db.semesters.toArray()).sort((a, b) => b.name.localeCompare(a.name)),
     subjects: (await db.subjects.toArray()).sort((a, b) => a.name.localeCompare(b.name)),
     notebooks: (await db.notebooks.toArray()).sort((a, b) => a.position - b.position),
+    pages: (await db.pages.toArray()).sort((a, b) => a.position - b.position),
   }));
   if (!data) return null;
 
@@ -68,6 +73,13 @@ export function Library({ onOpen, onError }: Props) {
       onError(error instanceof ImportError ? error.message : "No se pudo importar el cuaderno."),
     );
   };
+  const askNew = (subjectId: string) => {
+    const name = window.prompt("Nombre del cuaderno nuevo")?.trim();
+    if (name) void guard(createNotebook(subjectId, name));
+  };
+  // Pages of each notebook, in order: the first is its cover.
+  const pagesOf = new Map<string, Page[]>();
+  for (const page of data.pages) pagesOf.set(page.notebook_id, [...(pagesOf.get(page.notebook_id) ?? []), page]);
   const askDelete = (what: string, action: () => Promise<unknown>) => {
     if (window.confirm(`¿Borrar ${what}? Se borran también todas sus notas y no se puede deshacer.`)) void guard(action());
   };
@@ -89,21 +101,44 @@ export function Library({ onOpen, onError }: Props) {
                 <article key={subject.id} className="subject">
                   <header>
                     <h3>{subject.name}</h3>
-                    <button type="button" className="quiet" onClick={() => askRename("subject", subject.id, subject.name)}>Renombrar</button>
-                    <button type="button" className="quiet danger" onClick={() => askDelete(`la materia ${subject.name}`, () => deleteSubject(subject.id))}>Borrar</button>
+                    <button type="button" className="quiet more" aria-label={`Opciones de la materia ${subject.name}`} popoverTarget={`subject-${subject.id}`}>⋯</button>
+                    <div id={`subject-${subject.id}`} popover="auto" className="menu sheet">
+                      <p>{subject.name}</p>
+                      <button type="button" popoverTarget={`subject-${subject.id}`} popoverTargetAction="hide" onClick={() => askRename("subject", subject.id, subject.name)}>Cambiar nombre</button>
+                      <button type="button" className="danger" popoverTarget={`subject-${subject.id}`} popoverTargetAction="hide" onClick={() => askDelete(`la materia ${subject.name}`, () => deleteSubject(subject.id))}>Borrar materia</button>
+                    </div>
                   </header>
-                  <ul>
-                    {notebooks.map((notebook, i) => (
-                      <li key={notebook.id}>
-                        <button type="button" className="open" onClick={() => onOpen(notebook.id)}>{notebook.title}</button>
-                        <button type="button" className="quiet" aria-label={`Subir ${notebook.title}`} disabled={i === 0} onClick={() => void guard(moveNotebook(notebook.id, -1))}>↑</button>
-                        <button type="button" className="quiet" aria-label={`Bajar ${notebook.title}`} disabled={i === notebooks.length - 1} onClick={() => void guard(moveNotebook(notebook.id, 1))}>↓</button>
-                        <button type="button" className="quiet" onClick={() => askRename("notebook", notebook.id, notebook.title)}>Renombrar</button>
-                        <button type="button" className="quiet danger" onClick={() => askDelete(`el cuaderno ${notebook.title}`, () => deleteNotebook(notebook.id))}>Borrar</button>
-                      </li>
-                    ))}
+                  {/* Each notebook is a cover you tap to open, showing its first page. */}
+                  <ul className="shelf">
+                    {notebooks.map((notebook, i) => {
+                      const pages = pagesOf.get(notebook.id) ?? [];
+                      const menu = `notebook-${notebook.id}`;
+                      return (
+                        <li key={notebook.id}>
+                          <button type="button" className="cover" aria-label={`Abrir el cuaderno ${notebook.title}`} onClick={() => onOpen(notebook.id)}>
+                            {pages[0] ? <Thumbnail page={pages[0]} width={COVER_W} /> : <span className="blank" />}
+                            <strong>{notebook.title}</strong>
+                            <small>{pages.length === 1 ? "1 página" : `${pages.length} páginas`}</small>
+                          </button>
+                          <button type="button" className="quiet more" aria-label={`Opciones del cuaderno ${notebook.title}`} popoverTarget={menu}>⋯</button>
+                          <div id={menu} popover="auto" className="menu sheet">
+                            <p>{notebook.title}</p>
+                            <button type="button" popoverTarget={menu} popoverTargetAction="hide" onClick={() => onOpen(notebook.id)}>Abrir</button>
+                            <button type="button" popoverTarget={menu} popoverTargetAction="hide" onClick={() => askRename("notebook", notebook.id, notebook.title)}>Cambiar nombre</button>
+                            <button type="button" popoverTarget={menu} popoverTargetAction="hide" disabled={i === 0} onClick={() => void guard(moveNotebook(notebook.id, -1))}>Mover antes</button>
+                            <button type="button" popoverTarget={menu} popoverTargetAction="hide" disabled={i === notebooks.length - 1} onClick={() => void guard(moveNotebook(notebook.id, 1))}>Mover después</button>
+                            <button type="button" className="danger" popoverTarget={menu} popoverTargetAction="hide" onClick={() => askDelete(`el cuaderno ${notebook.title}`, () => deleteNotebook(notebook.id))}>Borrar cuaderno</button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                    <li>
+                      <button type="button" className="cover new" onClick={() => askNew(subject.id)}>
+                        <span className="blank">+</span>
+                        <strong>Nuevo cuaderno</strong>
+                      </button>
+                    </li>
                   </ul>
-                  <AddForm label="Agregar cuaderno" placeholder="Nombre del cuaderno" onAdd={(name) => guard(createNotebook(subject.id, name))} />
                   <label className="import">
                     Importar cuaderno desde un respaldo (.json)…
                     <input type="file" accept=".json,application/json" onChange={(e) => importInto(subject.id, e.currentTarget)} />

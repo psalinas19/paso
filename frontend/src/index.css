@@ -605,9 +605,132 @@ html:has(.library) body {
 
 .subjects {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
   gap: 16px;
   margin-top: 12px;
+}
+
+/* --- notebooks as covers ------------------------------------------------ */
+
+.shelf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px 16px;
+  margin: 14px 0 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.shelf li {
+  position: relative;
+  display: block;
+  width: 148px;
+  border: 0;
+}
+
+.library button.cover {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 0;
+  padding: 8px;
+  border-radius: 12px;
+  background: transparent;
+  color: #1f2a44;
+  transition: transform 0.08s, background 0.08s;
+}
+
+/* Pressing a cover visibly pushes it: the answer to "can I tap this?". */
+.library button.cover:active {
+  transform: scale(0.96);
+  background: #dfe6f5;
+}
+
+.cover canvas,
+.cover .blank {
+  display: block;
+  box-sizing: border-box;
+  width: 132px;
+  height: 171px;
+  border-radius: 6px;
+  background: #fff;
+  /* A page with a spine on the left, so it reads as a notebook and not as a picture. */
+  border-left: 6px solid #1f2a44;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.2), 0 4px 10px rgb(0 0 0 / 0.12);
+}
+
+.cover strong {
+  max-width: 100%;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.cover small {
+  color: #667085;
+  font-size: 13px;
+}
+
+.cover.new .blank {
+  display: grid;
+  place-items: center;
+  border: 2px dashed #b9c0cf;
+  background: transparent;
+  box-shadow: none;
+  color: #667085;
+  font-size: 44px;
+  font-weight: 300;
+}
+
+.cover.new strong {
+  color: #475467;
+  font-weight: 500;
+}
+
+/* The "more" button sits on the cover's corner, with a full-size touch target. */
+.shelf .more {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.92);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.library button.more {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Options for one thing, in the middle of the screen, titled with its name. */
+.menu.sheet {
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  min-width: 260px;
+}
+
+.menu.sheet::backdrop {
+  background: rgb(20 26 40 / 0.3);
+}
+
+.menu.sheet p {
+  margin: 8px 16px 6px;
+  color: #667085;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.library .menu button {
+  background: transparent;
+  color: #1f2a44;
+  border-radius: 10px;
+}
+
+.library .menu button.danger {
+  color: #b42318;
 }
 
 .subject {
