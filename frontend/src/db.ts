@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { CheckResponse, Hint } from "./review/api";
+import type { CheckResponse, Explanation, Hint, Solution } from "./review/api";
 import type { Stroke } from "./strokes/format";
 
 export interface Semester {
@@ -47,6 +47,9 @@ export interface Review {
   corrected?: string[];
   /** Level-1 hint, once asked for. Cleared when a step is corrected. */
   hint?: Hint | null;
+  /** Level-2 explanation and level-3 solution, once asked for. Cleared with the hint. */
+  explanation?: Explanation | null;
+  solution?: Solution | null;
   /** Everything this review has cost so far: reading, corrections and hint. */
   cost_usd: number;
   month_spend_usd: number;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db, type Review } from "../db";
 import { ExportDialog } from "../export/ExportDialog";
-import { loadConfig, postCheck, postCorrection, postHint, type CheckResponse } from "../review/api";
+import { loadConfig, postCheck, postCorrection, postExplain, postHint, postSolve, type CheckResponse } from "../review/api";
 import { mergeReview } from "../review/merge";
 import { ReviewPanel, type ReviewState } from "../review/ReviewPanel";
 import { SettingsDialog } from "../review/SettingsDialog";
@@ -113,6 +113,8 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   const actions = {
     onCorrect: (stepId: string, latex: string) => update((r) => postCorrection(loadConfig(), r.id, stepId, latex)),
     onHint: () => update((r) => postHint(loadConfig(), r.id)),
+    onExplain: () => update((r) => postExplain(loadConfig(), r.id)),
+    onSolve: () => update((r) => postSolve(loadConfig(), r.id)),
   };
   const failed = (what: string) => () => onError(`No se pudo ${what}.`);
   /** Run a command on the page at the centre of the screen, then rebuild if it changed the pages. */

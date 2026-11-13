@@ -374,6 +374,58 @@ body {
   color: #b54708;
 }
 
+.step.given .mark {
+  color: #667085;
+}
+
+.step .note {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-left: 3px solid #b54708;
+  background: #fffaf2;
+}
+
+.step .note span {
+  font-size: 13px;
+  color: #b54708;
+}
+
+.review .idle {
+  color: #475467;
+}
+
+.review h3.yours {
+  margin: 16px 0 0;
+  font-size: 17px;
+}
+
+.help .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.help .row button {
+  flex: 1 1 auto;
+}
+
+.hint .warned {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff5f4;
+}
+
+.hint .warned h4 {
+  color: #b42318;
+}
+
+.hint .proved + .opinion,
+.hint .opinion + .proved,
+.hint .warned + .opinion,
+.hint .opinion + .opinion {
+  margin-top: 8px;
+}
+
 .step.hinted {
   box-shadow: inset 3px 0 0 #1d4ed8;
   padding-left: 6px;

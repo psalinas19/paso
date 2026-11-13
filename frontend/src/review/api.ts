@@ -43,6 +43,37 @@ export interface Hint {
   error_label: string | null;
 }
 
+/**
+ * Level-2 help: the model's commentary on each step, and how the failing step
+ * should have read. `corrected.verified` is ours: the correction went through
+ * the symbolic verifier before it was sent here.
+ */
+export interface Explanation {
+  overview: string;
+  notes: { step_id: string; note: string }[];
+  failing_step_id: string | null;
+  basis: "verified" | "model_opinion" | "none";
+  corrected: { step_id: string; latex: string; sympy: string | null; verified: boolean; detail: string } | null;
+  /** The model's correction was proved wrong by the verifier and withheld. */
+  correction_rejected: boolean;
+  next_step: string;
+  takeaway: string;
+}
+
+/** Level-3 help: the worked solution, each step with the verifier's verdict. */
+export interface Solution {
+  goal: string;
+  method: string;
+  steps: { step: Step; why: string; status: StepStatus; detail: string; given: boolean }[];
+  answer: string;
+  check: string;
+  verified: boolean;
+  checked_steps: number;
+  unchecked_steps: number;
+  wrong_steps: number;
+  attempts: number;
+}
+
 /** A review as it stands now. Every call that changes one returns this. */
 export interface CheckResponse {
   id: string;
@@ -52,6 +83,8 @@ export interface CheckResponse {
   /** Ids of the steps the student retyped. */
   corrected?: string[];
   hint?: Hint | null;
+  explanation?: Explanation | null;
+  solution?: Solution | null;
   /** Cost of this call alone. */
   cost_usd: number;
   usage: UsageSummary;
@@ -144,4 +177,14 @@ export function postCorrection(config: BackendConfig, checkId: string, stepId: s
 /** Ask for the level-1 hint of a review. Asking twice does not pay twice. */
 export function postHint(config: BackendConfig, checkId: string): Promise<CheckResponse> {
   return call<CheckResponse>(config, `/api/checks/${encodeURIComponent(checkId)}/hint`, { method: "POST" });
+}
+
+/** Ask for the level-2 explanation: why each step holds, what went wrong, the corrected step. */
+export function postExplain(config: BackendConfig, checkId: string): Promise<CheckResponse> {
+  return call<CheckResponse>(config, `/api/checks/${encodeURIComponent(checkId)}/level/2`, { method: "POST" });
+}
+
+/** Ask for the level-3 worked solution, verified by the backend before it arrives. */
+export function postSolve(config: BackendConfig, checkId: string): Promise<CheckResponse> {
+  return call<CheckResponse>(config, `/api/checks/${encodeURIComponent(checkId)}/solve`, { method: "POST" });
 }

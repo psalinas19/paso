@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { backendOrigin, cleanToken, postCorrection, postHint } from "./api";
+import { backendOrigin, cleanToken, postCorrection, postExplain, postHint, postSolve } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -55,4 +55,14 @@ test("without connection nothing is sent", async () => {
   vi.stubGlobal("navigator", { onLine: false });
   await expect(postCorrection(config, "abc", "s3", "x")).rejects.toThrow("Sin conexión");
   expect(fetch).not.toHaveBeenCalled();
+});
+
+test("the explanation and the solution are asked for by review id", async () => {
+  const fetch = backend({ id: "abc" });
+  await postExplain(config, "abc");
+  await postSolve(config, "abc");
+  expect(fetch.mock.calls.map((call) => call[0])).toEqual([
+    "https://back.example/api/checks/abc/level/2",
+    "https://back.example/api/checks/abc/solve",
+  ]);
 });

@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import type { Review } from "../db";
 import type { CheckResponse, Step } from "./api";
-import { mergeReview, splitMath } from "./merge";
+import { mergeReview, splitMath, summarise } from "./merge";
 import { Result } from "./ReviewPanel";
 
 const step = (id: string, latex: string, confidence = 0.95): Step => ({
@@ -27,7 +27,7 @@ const review: Review = {
   budget_usd: 20,
 };
 
-const actions = { onCorrect: async () => {}, onHint: async () => {} };
+const actions = { onCorrect: async () => {}, onHint: async () => {}, onExplain: async () => {}, onSolve: async () => {} };
 const text = (r: Review, withActions = true) =>
   renderToStaticMarkup(<Result review={r} actions={withActions ? actions : undefined} />).replace(/<[^>]+>/g, " ");
 
@@ -35,8 +35,8 @@ test("a doubtful reading is still flagged, and every step can be corrected", () 
   const shown = text(review);
   expect(shown).toContain("Lectura dudosa");
   expect(shown.match(/Corregir lectura/g)).toHaveLength(2);
-  // Before any hint: the offer, with the warning to fix doubtful steps first.
-  expect(shown).toContain("Pedir pista");
+  // Before any help: the three levels on offer, with the warning to fix doubtful steps first.
+  for (const offer of ["Pista", "Explícame", "Ver solución"]) expect(shown).toContain(offer);
   expect(shown).toContain("Corrígelos antes");
 });
 
@@ -73,8 +73,10 @@ test("the hint keeps what was proved apart from what the model thinks", () => {
   expect(html.indexOf("Revisa la división")).toBeGreaterThan(opinion);
   expect(html.indexOf("Error aritmético")).toBeGreaterThan(opinion);
   expect(html).toContain("katex"); // the $2$ was typeset
-  expect(html).toContain("La pista habla de este paso");
-  expect(html).not.toContain("Pedir pista");
+  expect(html).toContain("La ayuda habla de este paso");
+  // The hint is no longer on offer; the other two levels still are.
+  expect(html).not.toContain(">Pista</button>");
+  expect(html).toContain(">Explícame</button>");
 });
 
 test("an opinion about an unchecked step is labelled as unproven", () => {
@@ -88,7 +90,7 @@ test("an opinion about an unchecked step is labelled as unproven", () => {
 test("a saved review opened without a backend shows no actions", () => {
   const shown = text(review, false);
   expect(shown).not.toContain("Corregir lectura");
-  expect(shown).not.toContain("Pedir pista");
+  expect(shown).not.toContain("Explícame");
 });
 
 test("the backend's answer replaces the review's state and adds to its cost", () => {
@@ -117,4 +119,90 @@ test("tutor text is split into prose and maths", () => {
     { math: false, text: " aquí" },
   ]);
   expect(splitMath("Cuesta $5 nada más")).toEqual([{ math: false, text: "Cuesta $5 nada más" }]);
+});
+
+test("a page with only the problem on it is not called correct", () => {
+  const given: Step = { ...step("s1", "3x + 2 = 9"), relation: "given" };
+  const lone: Review = {
+    ...review,
+    recognition: { steps: [given], model: "m", warnings: [] },
+    verification: { steps: [{ step_id: "s1", status: "correct", detail: "Dato del problema: no hay nada que comprobar.", method_used: "given", depends_on_error: null }] },
+  };
+  expect(summarise(lone)).toEqual({ tone: "idle", text: expect.stringContaining("Solo veo el enunciado") });
+  const html = renderToStaticMarkup(<Result review={lone} actions={actions} />);
+  expect(html).not.toContain("No encontré errores");
+  expect(html).toContain('aria-label="Dato"'); // a neutral mark, not a green tick
+  expect(html).not.toContain('aria-label="Correcto"');
+  expect(html).toContain("Ver solución");
+});
+
+test("the summary says what was actually checked", () => {
+  const verdict = (id: string, status: "correct" | "error" | "unverifiable") => ({ step_id: id, status, detail: "", method_used: "equation", depends_on_error: null });
+  const steps = [{ ...step("s1", "a"), relation: "given" }, step("s2", "b"), step("s3", "c")];
+  const of = (...statuses: ("correct" | "error" | "unverifiable")[]) =>
+    summarise({ recognition: { steps, model: "m", warnings: [] }, verification: { steps: [verdict("s1", "correct"), verdict("s2", statuses[0]), verdict("s3", statuses[1])] } });
+  expect(of("correct", "correct")).toEqual({ tone: "ok", text: "Comprobé 2 pasos y todos se siguen del anterior." });
+  expect(of("correct", "error").tone).toBe("bad");
+  expect(of("correct", "unverifiable").text).toBe("Comprobé un paso y se sigue del anterior. Un paso no se pudo comprobar con matemáticas.");
+  expect(of("unverifiable", "unverifiable").tone).toBe("idle"); // nothing proved: no green
+});
+
+test("the explanation puts each comment by its step and shows only a checked correction as checked", () => {
+  const explained: Review = {
+    ...review,
+    explanation: {
+      overview: "Es una ecuación lineal.",
+      notes: [{ step_id: "s1", note: "Restaste lo mismo en ambos lados." }, { step_id: "s2", note: "Aquí dividiste mal." }],
+      failing_step_id: "s2",
+      basis: "verified",
+      corrected: { step_id: "s2", latex: "x = 3", sympy: "Eq(x, 3)", verified: true, detail: "" },
+      correction_rejected: false,
+      next_step: "",
+      takeaway: "Lo que haces de un lado, hazlo del otro.",
+    },
+  };
+  const shown = text(explained);
+  expect(shown).toContain("Explicación del modelo (puede equivocarse)");
+  expect(shown).toContain("Cómo debió quedar el paso 2");
+  expect(shown).toContain("Comprobado con matemáticas: así sí se sigue");
+  expect(shown).toContain("Restaste lo mismo en ambos lados.");
+  expect(shown).toContain("Para recordar");
+  expect(shown).not.toContain("Explícame"); // already given
+
+  const unchecked = text({ ...explained, explanation: { ...explained.explanation!, corrected: { ...explained.explanation!.corrected!, verified: false } } });
+  expect(unchecked).toContain("No se pudo comprobar con matemáticas");
+  expect(unchecked).not.toContain("así sí se sigue");
+
+  const rejected = text({ ...explained, explanation: { ...explained.explanation!, corrected: null, correction_rejected: true } });
+  expect(rejected).toContain("no pasó la comprobación");
+  expect(rejected).not.toContain("Cómo debió quedar");
+});
+
+test("a solution carries the verifier's badge, or a warning when it did not pass", () => {
+  const solved = (id: string, latex: string, status: "correct" | "error", given = false) => ({ step: step(id, latex), why: given ? "" : `porque ${id}`, status, detail: "No se sostiene.", given });
+  const solution = {
+    goal: "Despejar $x$.",
+    method: "Operaciones inversas.",
+    steps: [solved("g1", "2x + 4 = 10", "correct", true), solved("r1", "2x = 6", "correct"), solved("r2", "x = 3", "correct")],
+    answer: "$x = 3$",
+    check: "Sustituye.",
+    verified: true,
+    checked_steps: 2,
+    unchecked_steps: 0,
+    wrong_steps: 0,
+    attempts: 1,
+  };
+  const good = text({ ...review, solution });
+  expect(good).toContain("Solución verificada simbólicamente");
+  expect(good).toContain("Dato de tu hoja.");
+  expect(good).toContain("porque r2");
+  expect(good).not.toContain("Ver solución");
+
+  const bad = text({
+    ...review,
+    solution: { ...solution, verified: false, checked_steps: 1, wrong_steps: 1, attempts: 2, steps: [solution.steps[0], solution.steps[1], solved("r2", "x = 4", "error")] },
+  });
+  expect(bad).toContain("Solución no verificada: revísala con cuidado");
+  expect(bad).not.toContain("Solución verificada simbólicamente");
+  expect(bad).toContain("Se comprobaron 1 de 2 pasos. Uno tiene un error que el modelo no corrigió.");
 });
