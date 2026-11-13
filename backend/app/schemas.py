@@ -198,3 +198,37 @@ class VerificationResult(BaseModel):
 
     def count(self, status: VerificationStatus) -> int:
         return sum(1 for s in self.steps if s.status is status)
+
+
+class HintBasis(StrEnum):
+    """What stands behind the step a hint points at (SPEC 9.4)."""
+
+    #: The symbolic verifier proved the step does not follow.
+    VERIFIED = "verified"
+    #: Only the model thinks so, about a step the verifier could not check.
+    MODEL_OPINION = "model_opinion"
+    #: Nothing to point at.
+    NONE = "none"
+
+
+class Hint(BaseModel):
+    """Level-1 help (SPEC 2.5): which step fails and a nudge, never the answer.
+
+    The two sources are kept in separate fields so the UI can never blur them:
+    `verified` is written by our code from the verifier's result; `hint` and
+    the error classification are the model's words.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = SCHEMA_VERSION
+    step_id: str | None = None
+    basis: HintBasis
+    verified: str = Field(description="What was established symbolically. Spanish, ours.")
+    hint: str = Field(default="", description="The model's nudge. Empty when there is none.")
+    error_type: str | None = Field(
+        default=None, description="Id from the subject's taxonomy, proposed by the model."
+    )
+    error_label: str | None = None
+    model: str = ""
+    prompt_version: str = ""

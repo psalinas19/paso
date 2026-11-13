@@ -79,6 +79,16 @@ class ProviderResult:
     warnings: list[str] = field(default_factory=list)
 
 
+@dataclass
+class HintDraft:
+    """The model's side of a hint, before our code decides what it may claim."""
+
+    step_id: str | None
+    error_type: str | None
+    hint: str
+    usage: Usage
+
+
 class ProviderError(RuntimeError):
     """The provider could not produce a usable result."""
 
@@ -95,4 +105,20 @@ class LLMProvider(Protocol):
         instruction: str,
     ) -> ProviderResult:
         """Read the image and return the steps written in it."""
+        ...
+
+    def restructure_step(self, system_prompt: PromptSpec, instruction: str) -> ProviderResult:
+        """Put one step the student retyped into the structured form. Text only.
+
+        Returns exactly one step.
+        """
+        ...
+
+    def write_hint(
+        self,
+        system_prompt: PromptSpec,
+        instruction: str,
+        image: PreparedImage | None,
+    ) -> HintDraft:
+        """Write a level-1 hint for an already transcribed and verified development."""
         ...

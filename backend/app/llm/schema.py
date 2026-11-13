@@ -60,3 +60,22 @@ class RecognitionPayload(BaseModel):
         description="Every step visible in the image, in reading order. Never invent "
         "a step that is not there."
     )
+
+
+class HintPayload(BaseModel):
+    """What the model fills in for a level-1 hint. Flat and without defaults,
+    like the recognition schema: every field is a decision the model must make."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    step_id: str | None = Field(
+        description="Id of the step that fails, or null if you see no mistake."
+    )
+    error_type: str | None = Field(
+        description="Id of the error type from the list in the instructions, or null "
+        "if none fits or there is no mistake."
+    )
+    hint: str = Field(
+        description="The hint, in Spanish. Never the corrected step or the final answer. "
+        "Empty if there is no mistake."
+    )
