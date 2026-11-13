@@ -25,7 +25,7 @@ export function App() {
 
   return (
     <>
-      {page && <CanvasView page={page} onError={setError} />}
+      {page && <CanvasView notebookId={page.notebook_id} onError={setError} />}
       {error && (
         <div className="banner banner-error" role="alert">
           {error}

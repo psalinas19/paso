@@ -28,6 +28,23 @@ test("a fast stroke with samples far apart still reaches its corners and its end
   expect(Math.max(...xs)).toBeGreaterThan(119); // ends where the pen lifted
 });
 
+test("a fast stroke keeps its thickness between far-apart samples", () => {
+  const fast: Point[] = [[0, 0, 0.5], [60, 80, 0.5], [120, 0, 0.5], [180, 80, 0.5], [240, 0, 0.5]];
+  const outline = outlinePoints(fast, 2);
+  // Area of the path actually filled: sample the same curve svgPath draws (through edge midpoints).
+  const mids = outline.map((p, i) => {
+    const n = outline[(i + 1) % outline.length];
+    return [(p[0] + n[0]) / 2, (p[1] + n[1]) / 2];
+  });
+  let area = 0;
+  mids.forEach((p, i) => {
+    const n = mids[(i + 1) % mids.length];
+    area += p[0] * n[1] - n[0] * p[1];
+  });
+  // 4 segments of 100 units, about 1.7 thick: a healthy stroke fills ~680 square units.
+  expect(Math.abs(area) / 2).toBeGreaterThan(500);
+});
+
 test("a single tap still draws a dot", () => {
   expect(svgPath(outlinePoints([[50, 50, 0.5]], 2))).not.toBe("");
 });

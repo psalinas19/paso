@@ -57,6 +57,14 @@ export function loadStrokes(pageId: string): Promise<Stroke[]> {
     .toArray();
 }
 
+/** Pages of a notebook in order. */
+export function loadPages(notebookId: string): Promise<Page[]> {
+  return db.pages
+    .where("[notebook_id+position]")
+    .between([notebookId, Dexie.minKey], [notebookId, Dexie.maxKey])
+    .toArray();
+}
+
 /** First run: create a semester, subject, notebook and page so writing starts at once. */
 export function ensureFirstPage(): Promise<Page> {
   return db.transaction("rw", db.semesters, db.subjects, db.notebooks, db.pages, async () => {

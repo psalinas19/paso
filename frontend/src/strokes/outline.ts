@@ -5,10 +5,40 @@ import type { Point } from "./format";
  * Polygon around a stroke, in page units. Screen and PDF both fill this same
  * polygon, which is why an exported page looks like the one on screen.
  */
-export function outlinePoints(points: Point[], size: number, done = true): number[][] {
-  return getStroke(points, {
+const catmullRom = (a: number, b: number, c: number, d: number, t: number) =>
+  0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t * t * t);
+
+/**
+ * Fill the gaps a fast stroke leaves between samples with a smooth curve through
+ * them. Without this the outline has too few points there and the smoothed path
+ * caves in, leaving thin, broken-looking segments. Rendering only: stored points stay raw.
+ */
+export function densify(points: Point[], step = 3): Point[] {
+  if (points.length < 2) return points;
+  const out: Point[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i], p2 = points[i + 1];
+    out.push(p1);
+    const n = Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / step);
+    if (n < 2) continue;
+    const p0 = points[i - 1] ?? p1, p3 = points[i + 2] ?? p2;
+    for (let k = 1; k < n; k++) {
+      const t = k / n;
+      out.push([
+        catmullRom(p0[0], p1[0], p2[0], p3[0], t),
+        catmullRom(p0[1], p1[1], p2[1], p3[1], t),
+        p1[2] + (p2[2] - p1[2]) * t,
+      ]);
+    }
+  }
+  out.push(points[points.length - 1]);
+  return out;
+}
+
+export function outlinePoints(points: Point[], size: number, done = true, thinning = 0.3): number[][] {
+  return getStroke(densify(points), {
     size,
-    thinning: 0.3,
+    thinning,
     smoothing: 0.5,
     // 0 on purpose: streamline drags each point toward the previous one, which
     // cuts ~25% off every corner when a fast stroke leaves samples far apart.

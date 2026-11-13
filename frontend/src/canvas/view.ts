@@ -32,11 +32,11 @@ function clampAxis(t: number, page: number, viewport: number): number {
 }
 
 /** Keep the page reachable: centred when it fits, otherwise never scrolled out of view. */
-export function clampView(v: View, viewportW: number, viewportH: number): View {
+export function clampView(v: View, viewportW: number, viewportH: number, docH = PAGE_H): View {
   return {
     s: v.s,
     tx: clampAxis(v.tx, PAGE_W * v.s, viewportW),
-    ty: clampAxis(v.ty, PAGE_H * v.s, viewportH),
+    ty: clampAxis(v.ty, docH * v.s, viewportH),
   };
 }
 
