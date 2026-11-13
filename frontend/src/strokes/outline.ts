@@ -48,6 +48,21 @@ export function outlinePoints(points: Point[], size: number, done = true, thinni
   });
 }
 
+/**
+ * The same curve svgPath draws, as explicit quadratic segments [control, end]
+ * starting at outline[0] and closing back to it. For targets with no SVG path
+ * parser, such as the PDF export.
+ */
+export function quadSegments(outline: number[][]): { start: number[]; segments: [number[], number[]][] } | null {
+  if (outline.length < 4) return null;
+  const segments: [number[], number[]][] = [];
+  for (let i = 1; i < outline.length - 1; i++) {
+    const a = outline[i], b = outline[i + 1];
+    segments.push([a, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]]);
+  }
+  return { start: outline[0], segments };
+}
+
 /** SVG path data for an outline, smoothed with quadratic curves through midpoints. */
 export function svgPath(outline: number[][]): string {
   if (outline.length < 4) return "";

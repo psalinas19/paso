@@ -121,6 +121,188 @@ body {
   background: #d9dde5;
 }
 
+.menu {
+  position: fixed;
+  inset: calc(64px + env(safe-area-inset-top)) auto auto 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px;
+  border: 0;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2), 0 10px 30px rgb(0 0 0 / 0.16);
+}
+
+.menu button {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #1f2a44;
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu button:active {
+  background: #dfe6f5;
+}
+
+.menu button.danger,
+.library button.quiet.danger {
+  color: #b42318;
+}
+
+/* --- library ------------------------------------------------------------ */
+
+.library {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: calc(24px + env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) 48px
+    max(24px, env(safe-area-inset-left));
+  color: #1f2a44;
+}
+
+.library > * {
+  max-width: 1000px;
+  margin-inline: auto;
+}
+
+.library h1 {
+  margin-block: 0 24px;
+  font-size: 30px;
+}
+
+.library section {
+  margin-bottom: 36px;
+}
+
+.library header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.library h2,
+.library h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+.library h3 {
+  font-size: 17px;
+}
+
+.library section > h2 {
+  margin-bottom: 12px;
+}
+
+.subjects {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.subject {
+  padding: 16px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+}
+
+.subject.new {
+  background: transparent;
+  box-shadow: none;
+  border: 1.5px dashed #b9c0cf;
+}
+
+.subject.new h3 {
+  margin-bottom: 12px;
+}
+
+.subject ul {
+  margin: 12px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.subject li {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-top: 1px solid #edf0f5;
+}
+
+.library button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #1f2a44;
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.library button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.library button.quiet {
+  padding: 0 10px;
+  background: transparent;
+  color: #475467;
+}
+
+.library button.open {
+  flex: 1;
+  background: transparent;
+  color: #1f2a44;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.library :is(button, input, select):focus-visible {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 1px;
+}
+
+.add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.add :is(input, select) {
+  flex: 1 1 160px;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1px solid #c5ccd9;
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-size: 16px; /* below 16px iOS zooms the page when the field is focused */
+  /* Text fields need selection back on; the app turns it off everywhere else. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 .banner {
   position: fixed;
   left: 50%;

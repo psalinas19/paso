@@ -44,6 +44,36 @@ Las coordenadas no dependen del zoom ni de la pantalla donde se escribió.
 
 En el iPad, en IndexedDB (base `paso`, tabla `strokes`), **un registro por trazo**. Así el autoguardado escribe solo el trazo nuevo.
 
+## Formas
+
+Una recta, un círculo, un triángulo o un rectángulo hechos «por pausa» se guardan como un trazo común: sus `points` recorren la figura con presión `0.5`. No existe un tipo de forma en el formato.
+
+## Exportación de un cuaderno (`.paso.json`)
+
+El respaldo de un cuaderno es un solo archivo JSON. Tipo en código: `NotebookExport`, en [`frontend/src/export/notebook.ts`](../frontend/src/export/notebook.ts).
+
+```json
+{
+  "format": "paso-notebook",
+  "format_version": 1,
+  "exported_at": "2026-11-12T20:40:00.000Z",
+  "subject": { "name": "Dinámica", "slug": "dinamica", "template": "generic", "tags": [] },
+  "notebook": { "id": "…", "subject_id": "…", "title": "General", "position": 0 },
+  "pages": [
+    {
+      "page": { "id": "…", "notebook_id": "…", "position": 0, "background": "grid" },
+      "strokes": [ { "format_version": 1, "…": "un trazo, como arriba" } ]
+    }
+  ]
+}
+```
+
+- `pages` va en el orden del cuaderno; `strokes`, en orden de dibujo.
+- `background` es `"grid"` (cuadrícula de 5 mm), `"ruled"` (rayado de 8 mm) o `"blank"`.
+- `format_version` del archivo y el de cada trazo son independientes.
+
+Todavía no hay importación de este archivo: es un respaldo legible, no un mecanismo de restauración.
+
 ## Cambios al formato
 
 Cualquier cambio sube `format_version`, agrega una migración de Dexie en [`frontend/src/db.ts`](../frontend/src/db.ts) y se documenta aquí con su fecha.

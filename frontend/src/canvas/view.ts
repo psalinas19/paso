@@ -4,6 +4,23 @@
 export const PAGE_W = 612;
 export const PAGE_H = 792;
 
+export const BACKGROUND_COLOR = "#d3dbe8";
+export const BACKGROUND_LINE_WIDTH = 0.5;
+
+/** Guide lines of a page background as [x1, y1, x2, y2]. Screen and PDF draw these same lines. */
+export function backgroundLines(background: "grid" | "ruled" | "blank"): [number, number, number, number][] {
+  const lines: [number, number, number, number][] = [];
+  if (background === "grid") {
+    const step = 14.173; // 5 mm
+    for (let x = step; x < PAGE_W; x += step) lines.push([x, 0, x, PAGE_H]);
+    for (let y = step; y < PAGE_H; y += step) lines.push([0, y, PAGE_W, y]);
+  } else if (background === "ruled") {
+    const step = 22.677; // 8 mm
+    for (let y = 60; y < PAGE_H - 20; y += step) lines.push([30, y, PAGE_W - 30, y]);
+  }
+  return lines;
+}
+
 export const MIN_ZOOM = 0.4;
 export const MAX_ZOOM = 6;
 const MARGIN = 24;

@@ -8,7 +8,7 @@ import { STROKE_FORMAT_VERSION, type Point, type Stroke } from "../strokes/forma
 import { boxOf, fractionInside, hitsStroke, inBox, unionBox, type Box, type XY } from "../strokes/geometry";
 import { outlinePoints, svgPath } from "../strokes/outline";
 import { adjustShape, recognizeShape, shapePoints, type Shape } from "../strokes/shapes";
-import { clampView, fitWidth, PAGE_H, PAGE_W, toPage, zoomAt, type View } from "./view";
+import { BACKGROUND_COLOR, BACKGROUND_LINE_WIDTH, backgroundLines, clampView, fitWidth, PAGE_H, PAGE_W, toPage, zoomAt, type View } from "./view";
 
 export type Tool =
   | { kind: "pen" | "highlighter"; color: string; size: number }
@@ -91,18 +91,13 @@ function paint(ctx: CanvasRenderingContext2D, path: Path2D, color: string, tool:
 function drawBackground(ctx: CanvasRenderingContext2D, background: Page["background"]) {
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, PAGE_W, PAGE_H);
-  if (background === "blank") return;
   ctx.beginPath();
-  if (background === "grid") {
-    const step = 14.173; // 5 mm
-    for (let x = step; x < PAGE_W; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, PAGE_H); }
-    for (let y = step; y < PAGE_H; y += step) { ctx.moveTo(0, y); ctx.lineTo(PAGE_W, y); }
-  } else {
-    const step = 22.677; // 8 mm ruled
-    for (let y = 60; y < PAGE_H - 20; y += step) { ctx.moveTo(30, y); ctx.lineTo(PAGE_W - 30, y); }
+  for (const [x1, y1, x2, y2] of backgroundLines(background)) {
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
   }
-  ctx.strokeStyle = "#d3dbe8";
-  ctx.lineWidth = 0.5;
+  ctx.strokeStyle = BACKGROUND_COLOR;
+  ctx.lineWidth = BACKGROUND_LINE_WIDTH;
   ctx.stroke();
 }
 
@@ -224,6 +219,11 @@ export class NotebookCanvas {
     p.page = { ...p.page, background: order[(order.indexOf(p.page.background) + 1) % 3] };
     db.pages.update(p.page.id, { background: p.page.background }).catch(() => this.events.onError("No se pudo guardar el fondo."));
     this.redrawPage(p);
+  }
+
+  /** Id of the page at the centre of the screen: the one page commands act on. */
+  currentPageId(): string | undefined {
+    return this.pages[this.pageAt(toPage(this.view, 0, this.host.clientHeight / 2)[1])]?.page.id;
   }
 
   // --- pages and drawing ---------------------------------------------------

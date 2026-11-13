@@ -14,9 +14,17 @@ py -3.12 -m uv run python -m app.poc <img> --materia ED
 py -3.12 -m uv run python -m app.eval [--no-llm] [--case <id>]
 ```
 
+Desde `frontend/` (Node ≥ 22.12):
+
+```powershell
+npm install ; npm test ; npm run build
+npm run preview        # dist/ en :4173; el service worker solo existe compilado
+npm run deploy         # publica en https://paso-libreta.paso-frontend.workers.dev
+```
+
 ## Estado
 
-Fase 0: librería + dos CLIs. **No hay** FastAPI, SQLite, Alembic ni frontend todavía ([ADR 0001](docs/decisions/0001-fase0-scope.md)).
+Fase 1 construida, en prueba en el iPad. Backend: librería + dos CLIs; **no hay** FastAPI, SQLite ni Alembic todavía ([ADR 0001](docs/decisions/0001-fase0-scope.md)). Frontend: PWA offline sin conexión al backend ([ADR 0006](docs/decisions/0006-fase1-frontend.md)).
 
 ## Arquitectura
 
@@ -32,6 +40,14 @@ app/poc.py, app/eval.py   los CLIs
 
 `recognition` y `verification` son **funciones puras sobre los modelos de `schemas.py`**: sin estado global, sin framework. La Fase 2 las envuelve en endpoints sin reescribirlas.
 
+```
+frontend/src/db.ts            esquema Dexie; cambios = nueva .version(n) con migración
+frontend/src/strokes/         formato de trazo, contorno, geometría, formas (puro, con tests)
+frontend/src/canvas/          NotebookCanvas (imperativo), Toolbar, view (zoom/geometría de página)
+frontend/src/library/         biblioteca y acciones de datos (borrados en cascada)
+frontend/src/export/          PDF vectorial y JSON
+```
+
 ## Decisiones tomadas
 
 | ADR | Qué fija |
@@ -41,6 +57,7 @@ app/poc.py, app/eval.py   los CLIs
 | [0003](docs/decisions/0003-step-relations.md) | `relation` y `derives_from`; propagación de error |
 | [0004](docs/decisions/0004-eval-metrics.md) | Cómo se mide el eval |
 | [0005](docs/decisions/0005-structured-output.md) | Salida estructurada en vez de tool use |
+| [0006](docs/decisions/0006-fase1-frontend.md) | Lienzo imperativo, dos capas, coordenadas en puntos PDF, despliegue |
 
 ## Reglas que no son obvias en el código
 
@@ -51,6 +68,11 @@ app/poc.py, app/eval.py   los CLIs
 5. **Los datos del enunciado se buscan en orden de lectura**, no por la cadena `derives_from`: se escriben arriba de la hoja y son premisa de todo el desarrollo, no de una rama.
 6. **Antes de tocar el cliente de Anthropic, carga el skill `claude-api`.** Lo pide §4 del spec y la API cambió más de lo que la memoria sugiere.
 7. **Antes de cambiar modelo o prompt, corre `app.eval`.** Si baja el porcentaje, no se cambia (§12.4).
+8. **El lienzo no pasa por el estado de React.** Tinta, zoom y herramientas viven en `NotebookCanvas`; React solo pinta la barra y la biblioteca. Meter eventos de puntero en `useState` añade latencia al trazo.
+9. **Los trazos guardan puntos, no contornos**, en puntos PDF (página 612 × 792). Cambiar cómo se dibuja no toca datos; cambiar el formato exige subir `format_version`, migración de Dexie y actualizar [docs/stroke-format.md](docs/stroke-format.md).
+10. **La dirección publicada no se cambia.** IndexedDB va ligado al origen: otra dirección deja vacía la app instalada en el iPad.
+11. **`wrangler` reescribe `package.json` y `vite.config.ts` si no encuentra `wrangler.jsonc`.** No borres ese archivo; si pasa, deshaz los cambios (versiones sin fijar).
+12. **El doble toque del Apple Pencil no llega a la web.** No lo prometas ni lo busques; ver ADR 0006.
 
 ## Idioma
 

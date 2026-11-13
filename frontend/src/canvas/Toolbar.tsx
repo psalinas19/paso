@@ -29,6 +29,9 @@ interface Props {
   onDeleteSelection(): void;
   onBackground(): void;
   onAddPage(): void;
+  onLibrary(): void;
+  /** Entries of the "more" menu: page and export commands. */
+  menu: { label: string; danger?: boolean; run(): void }[];
 }
 
 function Icon({ children }: { children: ReactNode }) {
@@ -50,6 +53,12 @@ function Button(props: { label: string; pressed?: boolean; disabled?: boolean; o
 export function Toolbar(p: Props) {
   return (
     <div className="toolbar" role="toolbar" aria-label="Herramientas">
+      <Button label="Biblioteca: materias y cuadernos" onClick={p.onLibrary}>
+        <Icon>
+          <path d="M5 4v16M9 4v16M13 5l5 15M4 20h16" />
+        </Icon>
+      </Button>
+      <span className="sep" />
       <Button label="Lazo: seleccionar, mover y estirar" pressed={p.active === "lasso"} onClick={() => p.onTool("lasso")}>
         <Icon>
           <ellipse cx="12" cy="10" rx="8" ry="5.5" strokeDasharray="3 2.5" />
@@ -114,6 +123,21 @@ export function Toolbar(p: Props) {
           <path d="M12 10v6M9 13h6" />
         </Icon>
       </Button>
+      {/* Native popover: opens and closes with no state of ours, and closes on a tap outside. */}
+      <button type="button" className="tool" aria-label="Más: exportar y páginas" title="Más: exportar y páginas" popoverTarget="notebook-menu">
+        <Icon>
+          <circle cx="5" cy="12" r="1.2" />
+          <circle cx="12" cy="12" r="1.2" />
+          <circle cx="19" cy="12" r="1.2" />
+        </Icon>
+      </button>
+      <div id="notebook-menu" popover="auto" className="menu">
+        {p.menu.map((item) => (
+          <button key={item.label} type="button" className={item.danger ? "danger" : undefined} popoverTarget="notebook-menu" popoverTargetAction="hide" onClick={item.run}>
+            {item.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

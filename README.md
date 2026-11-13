@@ -4,7 +4,50 @@ Libreta inteligente para iPad que revisa, corrige y explica desarrollos de ingen
 
 El spec completo está en [docs/SPEC.md](docs/SPEC.md). Las decisiones de diseño, en [docs/decisions/](docs/decisions/).
 
-**Estado: Fase 0** — prueba de concepto sin interfaz. Hay una librería de Python y dos comandos; no hay servidor, base de datos ni frontend todavía. Ver [ADR 0001](docs/decisions/0001-fase0-scope.md).
+**Estado: Fase 1** — hay dos piezas que todavía no se hablan entre sí:
+
+- **La libreta** (`frontend/`): PWA para iPad que funciona sin conexión. Ver [ADR 0006](docs/decisions/0006-fase1-frontend.md).
+- **El revisor** (`backend/`): librería de Python y dos comandos que transcriben y verifican una foto. No hay servidor ni base de datos todavía. Ver [ADR 0001](docs/decisions/0001-fase0-scope.md).
+
+## La libreta (frontend)
+
+Requiere **Node 22.12 o más nuevo**. Todo se corre desde `frontend\`.
+
+```powershell
+npm install          # instalar dependencias (versiones fijas)
+npm run dev          # servidor de desarrollo en http://localhost:5173
+npm test             # pruebas (sin red)
+npm run build        # compila a dist\
+npm run preview      # sirve dist\ en http://localhost:4173, como en producción
+npm run deploy       # compila y publica en Cloudflare
+```
+
+`npm run dev` no activa el modo sin conexión: el service worker solo existe en la versión compilada. Para probar eso usa `npm run preview`.
+
+### Probar en el iPad
+
+El iPad exige HTTPS para instalar la app y trabajar sin conexión, así que se publica en una dirección fija de Cloudflare:
+
+**https://paso-libreta.paso-frontend.workers.dev**
+
+1. La primera vez, inicia sesión: `npx --yes wrangler@4.161.0 login` (abre el navegador para autorizar).
+2. Publica: `npm run deploy`.
+3. En el iPad, abre la dirección en Safari → Compartir → **Agregar a inicio**.
+4. Ábrela desde el ícono con internet una vez; después funciona en modo avión.
+
+Solo se suben los archivos de la app. **Las notas nunca salen del iPad**: viven en el almacenamiento de Safari para esa dirección. Por eso la dirección no debe cambiar: en otra dirección la app empieza vacía.
+
+Tras publicar una versión nueva, el iPad la recibe al abrir la app con internet; aparece en la siguiente apertura.
+
+### Respaldo de las notas
+
+En un cuaderno, botón **⋯** → *Exportar el cuaderno a PDF* o *a JSON (respaldo)*. Se abre la hoja de compartir de iOS; desde ahí se guarda en Archivos o Nextcloud. El formato del JSON está en [docs/stroke-format.md](docs/stroke-format.md).
+
+Mientras no exista el respaldo automático al servidor (Fase 5), **exportar es la única copia fuera del iPad**. Safari puede borrar los datos de una app web que lleva semanas sin abrirse.
+
+## El revisor (backend)
+
+Lo que sigue (requisitos, puesta en marcha, comandos, materias, costos y banco de pruebas) es todo del backend.
 
 ## Requisitos
 
@@ -74,4 +117,4 @@ Cómo agregar ejercicios y anotar la transcripción correcta: [backend/eval/READ
 
 ## Qué falta
 
-Fase 1 en adelante (canvas, PWA, backend HTTP, chat, banco de errores, despliegue) según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.
+Fase 2 en adelante (backend HTTP, botón Revisar, chat, banco de errores, respaldo automático, despliegue del backend) según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.
