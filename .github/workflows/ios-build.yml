@@ -16,6 +16,9 @@ permissions:
 
 jobs:
   build:
+    # Mac runners are free only for public repositories. While this one is private
+    # the job is skipped instead of failing for lack of paid minutes.
+    if: ${{ !github.event.repository.private }}
     runs-on: macos-latest
     timeout-minutes: 30
     defaults:

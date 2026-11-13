@@ -1,6 +1,6 @@
 # La app nativa para iPad (envoltorio con Capacitor)
 
-**Estado (2026-11-13):** el proyecto está preparado y **nunca se ha ejecutado en un iPad ni abierto en Xcode**. Lo que sigue es la guía para el día que tengas la Mac. Los pasos dentro de Xcode están escritos de memoria, no comprobados en esta sesión: si un menú se llama distinto, busca el nombre parecido.
+**Estado (2026-11-13):** el proyecto está preparado y **nunca se ha compilado, abierto en Xcode ni ejecutado en un iPad**. Lo que sigue es la guía para el día que tengas la Mac. Los pasos dentro de Xcode están escritos de memoria, no comprobados en esta sesión: si un menú se llama distinto, busca el nombre parecido.
 
 ## Qué es
 
@@ -25,7 +25,7 @@ Lo que **no** cambia: la latencia del trazo es la misma que en Safari, y la revi
 | `frontend/ios/` | El proyecto de Xcode. Se versiona. |
 | `frontend/ios/App/App/PencilPlugin.swift` | Escucha el doble toque y lo avisa a la web. |
 | `frontend/src/native/pencil.ts` | Lado web: qué hace el doble toque. Fuera de la app nativa no hace nada. |
-| `.github/workflows/ios-build.yml` | Compila el proyecto en una Mac de GitHub, sin firmar, en cada cambio. Solo dice si arma. |
+| `.github/workflows/ios-build.yml` | Compila el proyecto en una Mac de GitHub, sin firmar. Solo dice si arma. **Hoy no corre:** el repositorio está como privado y las Mac de GitHub solo son gratis para repositorios públicos. |
 
 ## El día de la Mac
 
@@ -88,7 +88,7 @@ A los 7 días la app deja de abrir. Conecta el iPad a la Mac, abre el proyecto y
 ## Si algo falla
 
 - **El doble toque no hace nada.** Revisa Ajustes → Apple Pencil (que no esté en «Desactivado») y que el Pencil sea de 2.ª generación o Pro. Si aun así no, en Xcode mira el panel de abajo (la consola) al hacer el doble toque y copia lo que salga.
-- **No compila.** Copia el primer error en rojo. La compilación de GitHub (pestaña *Actions* del repositorio) sirve de referencia: si ahí pasa y en la Mac no, el problema es de la Mac o de la firma, no del código.
+- **No compila.** Copia el primer error en rojo y pásamelo. **El código Swift y el proyecto de Xcode no se han compilado nunca**: la comprobación en GitHub no pudo correr (repositorio privado), así que un error aquí en el primer intento no sería raro.
 - **La app abre en blanco.** Faltó `npm run build && npx cap sync ios` antes de abrir Xcode.
 
 ## Pendiente (no construido)
