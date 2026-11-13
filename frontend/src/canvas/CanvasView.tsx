@@ -7,6 +7,7 @@ import { ReviewPanel, type ReviewState } from "../review/ReviewPanel";
 import { SettingsDialog } from "../review/SettingsDialog";
 import { deletePage, movePage } from "../library/actions";
 import { NotebookCanvas, type Tool } from "./NotebookCanvas";
+import { loadPrefs, savePrefs } from "./prefs";
 import { PEN_COLORS, PEN_SIZES, Toolbar, type ToolKind } from "./Toolbar";
 
 /** A notebook: the toolbar (React) on top of the drawing surface (NotebookCanvas). */
@@ -20,9 +21,13 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const canvas = useRef<NotebookCanvas | null>(null);
 
-  const [active, setActive] = useState<ToolKind>("pen");
-  const [pen, setPen] = useState(0);
-  const [size, setSize] = useState(1);
+  // The toolbar reopens the way it was left: same pen, same thickness.
+  const [prefs] = useState(() => loadPrefs(PEN_COLORS.length, PEN_SIZES.length));
+  const [active, setActive] = useState<ToolKind>(prefs.active);
+  const [pen, setPen] = useState(prefs.pen);
+  const [size, setSize] = useState(prefs.size);
+  const [gestures, setGestures] = useState(prefs.gestures);
+  const [where, setWhere] = useState({ current: 1, total: 1 });
   const [state, setState] = useState({ canUndo: false, canRedo: false, hasSelection: false });
   // Bumped after pages are reordered or deleted, to rebuild the surface from the database.
   const [revision, setRevision] = useState(0);
@@ -30,7 +35,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   const [settings, setSettings] = useState(false);
   const [panel, setPanel] = useState<ReviewState | null>(null);
   // What the one-shot eraser returns to.
-  const writingTool = useRef<"pen" | "highlighter">("pen");
+  const writingTool = useRef<"pen" | "highlighter">(prefs.active);
 
   const tool = useMemo<Tool>(() => {
     if (active === "pen") return { kind: "pen", color: PEN_COLORS[pen].value, size: PEN_SIZES[size].value };
@@ -43,12 +48,15 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
       onError,
       onState: setState,
       onEraseEnd: () => setActive(writingTool.current),
+      onPage: (current, total) => setWhere({ current, total }),
     });
     canvas.current = c;
     return () => c.destroy();
   }, [notebookId, onError, revision]);
 
   useEffect(() => canvas.current?.setTool(tool), [tool, notebookId, revision]);
+  useEffect(() => canvas.current?.setGestures(gestures), [gestures, notebookId, revision]);
+  useEffect(() => savePrefs({ active, pen, size, gestures }, writingTool.current), [active, pen, size, gestures]);
 
   const choose = (kind: ToolKind) => {
     if (kind === "pen" || kind === "highlighter") writingTool.current = kind;
@@ -108,6 +116,10 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
     { label: "Exportar…", run: () => setExporting(true) },
     { label: "Revisiones guardadas", run: () => setPanel({ kind: "history" }) },
     { label: "Ajustes de revisión…", run: () => setSettings(true) },
+    {
+      label: gestures ? "Gestos de deshacer: activados (tocar para apagar)" : "Gestos de deshacer: apagados (tocar para activar)",
+      run: () => setGestures((on) => !on),
+    },
     { label: "Subir esta página", run: onPage((id) => movePage(id, -1), "mover la página") },
     { label: "Bajar esta página", run: onPage((id) => movePage(id, 1), "mover la página") },
     {
@@ -125,6 +137,9 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
         <canvas ref={inkRef} className="ink" />
         <canvas ref={overlayRef} className="overlay" />
       </div>
+      <div className="page-indicator" aria-live="off">
+        Página {where.current} de {where.total}
+      </div>
       <Toolbar
         active={active}
         pen={pen}
@@ -139,6 +154,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
         onUndo={() => canvas.current?.undo()}
         onRedo={() => canvas.current?.redo()}
         onDeleteSelection={() => canvas.current?.deleteSelection()}
+        onDuplicateSelection={() => canvas.current?.duplicateSelection()}
         onReview={() => void review()}
         onBackground={() => canvas.current?.cycleBackground()}
         onLibrary={onLibrary}

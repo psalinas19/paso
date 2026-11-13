@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { db, loadPages } from "../db";
 import { createSemester, createSubject } from "../library/actions";
 import type { Stroke } from "../strokes/format";
-import { collectNotebook, toPdf } from "./notebook";
+import { collectNotebook, ImportError, importNotebook, importNotebookFile, toPdf } from "./notebook";
 
 const stroke = (pageId: string, tool: Stroke["tool"], n: number): Stroke => ({
   format_version: 1, id: `s${n}`, page_id: pageId, tool, color: tool === "pen" ? "#d92d20" : "#ffd400",
@@ -30,4 +30,48 @@ test("a notebook exports to JSON with every stroke, and to a vector PDF", async 
   expect(pdf.match(/ c\n/g)!.length).toBeGreaterThan(40); // strokes are curves...
   expect(pdf).not.toContain("/Subtype /Image"); // ...not a picture of the page
   expect(pdf).toContain("0.35"); // highlighter transparency
+});
+
+test("a backup comes back as a new notebook with every stroke", async () => {
+  const original = (await db.notebooks.toArray())[0];
+  const backup = JSON.parse(JSON.stringify(await collectNotebook(original.id)));
+  const before = await db.strokes.count();
+
+  const id = await importNotebook(backup, original.subject_id);
+
+  expect(id).not.toBe(original.id);
+  const restored = await collectNotebook(id);
+  expect(restored.notebook.title).toBe(`${original.title} (importado)`); // the original is untouched
+  expect(restored.notebook.subject_id).toBe(original.subject_id);
+  const strip = (s: Stroke) => ({ ...s, id: "", page_id: "" });
+  expect(restored.pages.map((p) => p.strokes.map(strip))).toEqual(backup.pages.map((p: { strokes: Stroke[] }) => p.strokes.map(strip)));
+  expect(restored.pages[0].page.background).toBe(backup.pages[0].page.background);
+  expect(await db.strokes.count()).toBe(before * 2); // nothing overwritten
+  expect((await collectNotebook(original.id)).pages[0].strokes).toHaveLength(before);
+
+  // Importing the same file again gives a third notebook, not a clash.
+  const again = await importNotebookFile(new Blob([JSON.stringify(backup)]), original.subject_id);
+  expect((await db.notebooks.get(again))!.title).toBe(`${original.title} (importado 2)`);
+});
+
+test("a file that is not a sound backup changes nothing", async () => {
+  const original = (await db.notebooks.toArray())[0];
+  const backup = JSON.parse(JSON.stringify(await collectNotebook(original.id)));
+  const counts = async () => [await db.notebooks.count(), await db.pages.count(), await db.strokes.count()];
+  const before = await counts();
+  const broken = (change: (b: typeof backup) => void) => {
+    const copy = JSON.parse(JSON.stringify(backup));
+    change(copy);
+    return copy;
+  };
+
+  await expect(importNotebookFile(new Blob(["hola"]), original.subject_id)).rejects.toThrow(ImportError);
+  await expect(importNotebook({ format: "otra-cosa" }, original.subject_id)).rejects.toThrow("no es un respaldo");
+  await expect(importNotebook(broken((b) => (b.format_version = 2)), original.subject_id)).rejects.toThrow("versión 2");
+  // One damaged stroke on the last page: the pages before it must not be half-imported.
+  await expect(importNotebook(broken((b) => (b.pages[0].strokes[1].points = [[1, 2]])), original.subject_id)).rejects.toThrow("Página 1");
+  await expect(importNotebook(broken((b) => (b.pages[0].strokes[0].format_version = 7)), original.subject_id)).rejects.toThrow("versión 7");
+  await expect(importNotebook(backup, "no-such-subject")).rejects.toThrow("ya no existe");
+
+  expect(await counts()).toEqual(before);
 });

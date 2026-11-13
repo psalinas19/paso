@@ -27,6 +27,7 @@ interface Props {
   onUndo(): void;
   onRedo(): void;
   onDeleteSelection(): void;
+  onDuplicateSelection(): void;
   onReview(): void;
   onBackground(): void;
   onLibrary(): void;
@@ -94,6 +95,14 @@ export function Toolbar(p: Props) {
         <button type="button" className="tool review-button" onClick={p.onReview}>
           Revisar
         </button>
+      )}
+      {p.hasSelection && (
+        <Button label="Duplicar la selección" onClick={p.onDuplicateSelection}>
+          <Icon>
+            <rect x="8" y="8" width="12" height="12" rx="2" />
+            <path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
+          </Icon>
+        </Button>
       )}
       {p.hasSelection && (
         <Button label="Borrar la selección" onClick={p.onDeleteSelection}>

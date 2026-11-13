@@ -39,9 +39,19 @@ Solo se suben los archivos de la app. **Las notas nunca salen del iPad**: viven 
 
 Tras publicar una versión nueva, el iPad la descarga al abrir la app con internet y la usa a partir de la siguiente vez que la abras (ciérrala del todo desde el selector de apps).
 
+### Gestos y atajos de la libreta
+
+- **Deshacer:** toque corto con dos dedos. **Rehacer:** con tres. Si la mano apoyada los dispara, apágalos en **⋯ → Gestos de deshacer**.
+- **Lazo:** con algo seleccionado aparecen *Duplicar* y *Borrar*. Las esquinas cambian el tamaño sin deformar; los puntos de los lados estiran en un solo sentido.
+- Abajo al centro se ve en qué página vas. La barra recuerda la pluma y el grosor que dejaste.
+
+Estos gestos están probados en computadora, **todavía no en el iPad**.
+
 ### Respaldo de las notas
 
 En un cuaderno, botón **⋯** → *Exportar…*: eliges qué páginas van al PDF, o sacas el cuaderno completo como JSON (respaldo). Se abre la hoja de compartir de iOS; desde ahí se guarda en Archivos o Nextcloud. El formato del JSON está en [docs/stroke-format.md](docs/stroke-format.md).
+
+Para **restaurar** un respaldo: en la biblioteca, dentro de la materia, toca *Importar cuaderno desde un respaldo (.json)…* y elige el archivo. Entra como un cuaderno nuevo; nunca pisa uno existente.
 
 Mientras no exista el respaldo automático al servidor (Fase 5), **exportar es la única copia fuera del iPad**. Safari puede borrar los datos de una app web que lleva semanas sin abrirse.
 

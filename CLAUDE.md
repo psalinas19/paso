@@ -26,7 +26,7 @@ npm run deploy         # publica en https://paso-libreta.paso-frontend.workers.d
 
 ## Estado
 
-Fase 2, entregas 2a y 2b construidas ([ADR 0007](docs/decisions/0007-fase2-api.md)): la libreta manda la selección del lazo a `POST /api/check`, muestra transcripción y verificación, deja corregir un paso mal leído y pedir la pista de nivel 1; `app.case` convierte revisiones guardadas en casos del banco. **2b solo se ha probado con el proveedor simulado**: ni los prompts `restructure` y `hint` ni el adaptador se han ejecutado contra el API real, y nada se ha probado en el iPad. Falta 2c (marcas sobre la hoja). **Nada de calidad del modelo está medido: `eval/cases/` está vacío.** Hay un plan sin aprobar en [docs/plan-mecanicas-y-app-nativa.md](docs/plan-mecanicas-y-app-nativa.md): no construyas nada de él sin visto bueno. Fase 1 sigue en prueba en el iPad ([ADR 0006](docs/decisions/0006-fase1-frontend.md)).
+Fase 2, entregas 2a y 2b construidas ([ADR 0007](docs/decisions/0007-fase2-api.md)): la libreta manda la selección del lazo a `POST /api/check`, muestra transcripción y verificación, deja corregir un paso mal leído y pedir la pista de nivel 1; `app.case` convierte revisiones guardadas en casos del banco. **2b solo se ha probado con el proveedor simulado**: ni los prompts `restructure` y `hint` ni el adaptador se han ejecutado contra el API real, y nada se ha probado en el iPad. Falta 2c (marcas sobre la hoja). **Nada de calidad del modelo está medido: `eval/cases/` está vacío.** El [plan de mecánicas y app nativa](docs/plan-mecanicas-y-app-nativa.md) está aprobado (2026-11-13): la primera tanda de gestos y la importación de JSON están construidas, **sin probar en el iPad**; garabatear para borrar y las miniaturas siguen sin decidir. No se paga la cuenta de Apple: la parte nativa se hará con una Mac prestada y cuenta gratuita (la app caduca cada 7 días), como complemento de la PWA, no como reemplazo. Fase 1 sigue en prueba en el iPad ([ADR 0006](docs/decisions/0006-fase1-frontend.md)).
 
 ## Arquitectura
 
@@ -90,6 +90,8 @@ frontend/src/review/          cliente del API, imagen de la selección, panel y 
 18. **`Check.steps_json` no se reescribe.** Es lo que leyó el modelo y lo que mide el banco. Las correcciones del alumno van en `corrected_steps_json`; `verification_json` describe siempre los pasos vigentes (`current_steps()` en `db.py`).
 19. **Un borrador de caso no se mide.** `app.case new` escribe `truth.draft.json`; el eval lo ignora hasta `app.case confirm`. Sin esa barrera el banco mediría al modelo contra su propia lectura.
 20. **El prompt `restructure` incluye el de reconocimiento** en vez de copiar el dialecto. Editar `recognize.system.md` cambia los dos.
+
+21. **Un gesto de dedos nuevo se decide en `canvas/gestures.ts`** (función pura, con test) y se prueba en el iPad con la mano apoyada antes de darlo por bueno. Dos gestos anteriores fallaron justo ahí.
 
 ## Idioma
 

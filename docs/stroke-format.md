@@ -72,7 +72,7 @@ El respaldo de un cuaderno es un solo archivo JSON. Tipo en código: `NotebookEx
 - `background` es `"grid"` (cuadrícula de 5 mm), `"ruled"` (rayado de 8 mm) o `"blank"`.
 - `format_version` del archivo y el de cada trazo son independientes.
 
-Todavía no hay importación de este archivo: es un respaldo legible, no un mecanismo de restauración.
+**Importar** (desde 2026-11-13): en la biblioteca, cada materia tiene «Importar cuaderno desde un respaldo». El archivo entra como un cuaderno **nuevo**: todos los identificadores se generan de nuevo, así que nunca pisa nada, e importar dos veces el mismo archivo da dos cuadernos. Se valida completo antes de escribir: un archivo dañado no deja nada a medias. El orden de `pages` en el archivo es el orden del cuaderno.
 
 ## Cambios al formato
 

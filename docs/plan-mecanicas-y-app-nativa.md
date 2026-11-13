@@ -1,6 +1,26 @@
 # Plan: mecánicas de la libreta y ruta a app nativa
 
-**Fecha:** 2026-11-13 · **Estado:** propuesta, espera tu aprobación. **Nada de esto está construido.**
+**Fecha:** 2026-11-13 · **Estado:** aprobado el 2026-11-13, con las decisiones de abajo. El resto del documento se conserva como se propuso.
+
+## Decisiones tomadas (2026-11-13)
+
+- **Plan aprobado.**
+- **No se paga la cuenta de desarrollador de Apple.** La parte nativa se hará con **la Mac de tu papá**.
+- **Ya construido** (probado en navegador de escritorio, **falta el iPad**): la primera tanda de la Parte A (deshacer con dos dedos y rehacer con tres, indicador de página, duplicar selección, esquinas que estiran sin deformar, recordar pluma y grosor) e «Importar cuaderno desde un respaldo».
+- **Sin decidir todavía:** garabatear para borrar (pregunta 2) y cuándo van las miniaturas (pregunta 3).
+
+### Qué cambia en la Parte B al usar una Mac sin cuenta de pago
+
+Con una Mac ya no hace falta compilar en la nube ni TestFlight: se instala desde Xcode por cable con tu cuenta de Apple gratuita. Eso deja fuera Codemagic y simplifica la firma. Pero la cuenta gratuita tiene un límite que conviene que sepas antes de empezar:
+
+- **La app instalada caduca a los 7 días.** [leído 63] Después no abre hasta volver a instalarla desde Xcode, en esa Mac, con el iPad conectado. Es decir: **necesitas la Mac de tu papá más o menos una vez por semana, para siempre**, no una sola tarde.
+- Al reinstalar encima, las notas deberían conservarse [sin verificar]; hay que probarlo con un cuaderno de prueba antes de confiarle notas reales.
+- Límites de la cuenta gratuita: 3 apps por dispositivo y 10 identificadores. [leído 63] No estorban aquí.
+- Que el doble toque del Pencil funcione con cuenta gratuita no se confirmó en ninguna fuente [sin verificar]; no parece requerir ningún permiso especial.
+
+Por eso la recomendación pasa a ser: **la app nativa como complemento, no como reemplazo.** La PWA sigue siendo donde viven tus notas de todos los días (no caduca); la nativa se instala cuando tengas la Mac a mano para probar el doble toque. Si resulta que no puedes vivir sin él, ahí se decide de nuevo entre visitar la Mac cada semana o pagar los 99 USD.
+
+Lo que sigue necesitando la Mac (no se puede hacer desde esta sesión ni desde Windows): instalar Xcode, abrir el proyecto, firmar con tu cuenta, activar el modo desarrollador en el iPad e instalar. La Etapa 0 (añadir Capacitor al proyecto y dejarlo listo para abrirse en Xcode) sí se puede preparar antes.
 
 Este documento tiene dos partes y una lista final de decisiones:
 

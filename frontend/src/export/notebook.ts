@@ -1,9 +1,10 @@
 // Export a notebook (or some of its pages) to open formats: JSON and vector PDF.
 // Both work offline: everything comes from IndexedDB and the PDF library is part
 // of the precached app.
+import Dexie from "dexie";
 import { db, loadPages, loadStrokes, type Notebook, type Page, type Subject } from "../db";
 import { BACKGROUND_COLOR, BACKGROUND_LINE_WIDTH, backgroundLines, PAGE_H, PAGE_W } from "../canvas/view";
-import type { Stroke } from "../strokes/format";
+import { STROKE_FORMAT_VERSION, type Point, type Stroke } from "../strokes/format";
 import { outlinePoints, quadSegments } from "../strokes/outline";
 
 export const EXPORT_FORMAT_VERSION = 1;
@@ -35,6 +36,94 @@ export async function collectNotebook(notebookId: string): Promise<NotebookExpor
     notebook,
     pages: await Promise.all(pages.map(async (page) => ({ page, strokes: await loadStrokes(page.id) }))),
   };
+}
+
+/** Why a file could not be imported. The message is shown to the user, in Spanish. */
+export class ImportError extends Error {}
+
+const BACKGROUNDS: Page["background"][] = ["grid", "ruled", "blank"];
+const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+function readStroke(raw: unknown, pageId: string, where: string): Stroke {
+  const s = raw as Partial<Stroke> | null;
+  if (!s || typeof s !== "object") throw new ImportError(`${where}: hay un trazo que no se puede leer.`);
+  if (s.format_version !== STROKE_FORMAT_VERSION) {
+    throw new ImportError(`${where}: los trazos son de un formato (versión ${String(s.format_version)}) que esta versión de la app no conoce.`);
+  }
+  const points = Array.isArray(s.points) ? s.points : [];
+  const valid =
+    (s.tool === "pen" || s.tool === "highlighter") && typeof s.color === "string" && isNumber(s.size) && isNumber(s.created_at) &&
+    points.length > 0 && points.every((p) => Array.isArray(p) && p.length === 3 && p.every(isNumber));
+  if (!valid) throw new ImportError(`${where}: hay un trazo dañado.`);
+  return {
+    format_version: STROKE_FORMAT_VERSION,
+    id: crypto.randomUUID(),
+    page_id: pageId,
+    tool: s.tool!,
+    color: s.color!,
+    size: s.size!,
+    points: points.map((p): Point => [p[0], p[1], p[2]]),
+    created_at: s.created_at!,
+  };
+}
+
+/**
+ * Restore a `.paso.json` backup as a **new** notebook inside `subjectId`.
+ *
+ * Every id is minted fresh, so importing never overwrites anything: bringing
+ * the same file in twice gives two notebooks. The whole file is checked before
+ * the first write, and the write is one transaction: all of it lands or none.
+ */
+export async function importNotebook(data: unknown, subjectId: string): Promise<string> {
+  const file = data as Partial<NotebookExport> | null;
+  if (!file || typeof file !== "object" || file.format !== "paso-notebook") {
+    throw new ImportError("Ese archivo no es un respaldo de cuaderno de Paso.");
+  }
+  if (file.format_version !== EXPORT_FORMAT_VERSION) {
+    throw new ImportError(`El respaldo es de un formato (versión ${String(file.format_version)}) que esta versión de la app no conoce.`);
+  }
+  if (!Array.isArray(file.pages)) throw new ImportError("El respaldo no trae páginas.");
+
+  const notebookId = crypto.randomUUID();
+  const pages: Page[] = [];
+  const strokes: Stroke[] = [];
+  file.pages.forEach((entry, index) => {
+    const where = `Página ${index + 1}`;
+    const background = entry?.page?.background;
+    if (!entry || !Array.isArray(entry.strokes) || !BACKGROUNDS.includes(background)) {
+      throw new ImportError(`${where}: no se puede leer.`);
+    }
+    // The order of the file is the order of the notebook, whatever positions it carried.
+    const page: Page = { id: crypto.randomUUID(), notebook_id: notebookId, position: index, background };
+    pages.push(page);
+    for (const raw of entry.strokes) strokes.push(readStroke(raw, page.id, where));
+  });
+  if (!pages.length) pages.push({ id: crypto.randomUUID(), notebook_id: notebookId, position: 0, background: "grid" });
+
+  const wanted = typeof file.notebook?.title === "string" && file.notebook.title.trim() ? file.notebook.title.trim() : "Cuaderno importado";
+  await db.transaction("rw", db.subjects, db.notebooks, db.pages, db.strokes, async () => {
+    if (!(await db.subjects.get(subjectId))) throw new ImportError("La materia donde ibas a importar ya no existe.");
+    const siblings = await db.notebooks.where("[subject_id+position]").between([subjectId, Dexie.minKey], [subjectId, Dexie.maxKey]).toArray();
+    const taken = new Set(siblings.map((n) => n.title));
+    let title = wanted;
+    for (let n = 2; taken.has(title); n++) title = `${wanted} (importado${n > 2 ? ` ${n - 1}` : ""})`;
+    const position = siblings.length ? siblings[siblings.length - 1].position + 1 : 0;
+    await db.notebooks.add({ id: notebookId, subject_id: subjectId, title, position });
+    await db.pages.bulkAdd(pages);
+    await db.strokes.bulkAdd(strokes);
+  });
+  return notebookId;
+}
+
+/** Read a file the user picked and import it. */
+export async function importNotebookFile(file: Blob, subjectId: string): Promise<string> {
+  let data: unknown;
+  try {
+    data = JSON.parse(await file.text());
+  } catch {
+    throw new ImportError("Ese archivo no es un respaldo de cuaderno de Paso.");
+  }
+  return importNotebook(data, subjectId);
 }
 
 /**

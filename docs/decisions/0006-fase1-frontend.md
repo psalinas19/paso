@@ -37,6 +37,22 @@ La primera versión tenía un canvas por página, escalado con una transformaci�
 
 **El Pencil tiene dos fuentes de eventos.** La principal son los eventos de puntero. Safari no siempre se los entrega al lápiz: con la mano ya apoyada, el primer trazo podía no arrancar hasta levantar y volver a bajar. Los eventos táctiles sí siguen llegando e indican cuál toque es el lápiz (`touchType === "stylus"`), así que sirven de red de seguridad: si el lápiz está sobre el vidrio y no hay trazo en curso, se dibuja desde ellos. Además se llama a `preventDefault` en los eventos táctiles del lienzo para que Safari no se quede con los toques (pulsación larga, desplazamiento).
 
+## Ampliación del 2026-11-13: primera tanda de mecánicas
+
+Aprobada en [el plan de mecánicas](../plan-mecanicas-y-app-nativa.md). Probada en navegador de escritorio con toques simulados; **falta confirmarla en el iPad con la mano apoyada**, que es donde fallaron los gestos anteriores.
+
+**Deshacer con un toque de dos dedos, rehacer con tres.** La decisión es una función pura (`canvas/gestures.ts`) y es estricta a propósito: los dedos deben bajar casi juntos (150 ms), levantarse pronto (300 ms) y no moverse (12 px). Una mano apoyada dura más, apoya sus contactos de uno en uno y resbala. Además sigue valiendo el rechazo de palma: un toque que cae hasta 0.4 s después del lápiz se ignora, así que deshacer justo al levantar la pluma no responde. Se apaga en **⋯ → Gestos de deshacer**.
+
+**Las esquinas de la selección conservan la proporción; los lados estiran en un sentido.** Antes cada esquina estiraba ancho y alto por separado y la letra quedaba chata. Ahora hay ocho puntos: cuatro esquinas (misma escala en ambos sentidos, sin voltear) y cuatro lados (un solo sentido, que es como se cambia la forma de un rectángulo).
+
+**Duplicar la selección** crea trazos nuevos un cuadro abajo y a la derecha y los deja seleccionados. Es una sola operación de deshacer.
+
+**Indicador «Página N de M»** abajo al centro. No recibe toques.
+
+**La barra recuerda pluma, grosor y el ajuste de gestos** (`localStorage`, por dispositivo). Borrador y lazo no se recuerdan: son momentáneos.
+
+**Importar un respaldo** como cuaderno nuevo: ver [stroke-format.md](../stroke-format.md).
+
 ## Limitaciones conocidas
 
 - **El doble toque del Apple Pencil no existe para la web.** Safari no lo expone. El borrador es de un solo uso, desde la barra (SPEC §6.1). Un doble toque con el dedo se probó como sustituto y se retiró: la mano apoyada lo activaba por accidente.

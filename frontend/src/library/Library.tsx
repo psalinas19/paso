@@ -1,6 +1,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState, type FormEvent } from "react";
 import { db } from "../db";
+import { ImportError, importNotebookFile } from "../export/notebook";
 import {
   createNotebook, createSemester, createSubject, deleteNotebook, deleteSemester, deleteSubject,
   moveNotebook, rename, TEMPLATES,
@@ -58,6 +59,15 @@ export function Library({ onOpen, onError }: Props) {
     const name = window.prompt("Nuevo nombre", current)?.trim();
     if (name && name !== current) void guard(rename(kind, id, name));
   };
+  /** Restore a `.paso.json` backup as a new notebook of this subject. */
+  const importInto = (subjectId: string, input: HTMLInputElement) => {
+    const file = input.files?.[0];
+    input.value = ""; // so picking the same file again fires the event
+    if (!file) return;
+    importNotebookFile(file, subjectId).catch((error) =>
+      onError(error instanceof ImportError ? error.message : "No se pudo importar el cuaderno."),
+    );
+  };
   const askDelete = (what: string, action: () => Promise<unknown>) => {
     if (window.confirm(`¿Borrar ${what}? Se borran también todas sus notas y no se puede deshacer.`)) void guard(action());
   };
@@ -94,6 +104,10 @@ export function Library({ onOpen, onError }: Props) {
                     ))}
                   </ul>
                   <AddForm label="Agregar cuaderno" placeholder="Nombre del cuaderno" onAdd={(name) => guard(createNotebook(subject.id, name))} />
+                  <label className="import">
+                    Importar cuaderno desde un respaldo (.json)…
+                    <input type="file" accept=".json,application/json" onChange={(e) => importInto(subject.id, e.currentTarget)} />
+                  </label>
                 </article>
               );
             })}

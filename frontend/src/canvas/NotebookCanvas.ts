@@ -9,6 +9,7 @@ import { STROKE_FORMAT_VERSION, type Point, type Stroke } from "../strokes/forma
 import { boxOf, fractionInside, hitsStroke, inBox, unionBox, type Box, type XY } from "../strokes/geometry";
 import { outlinePoints, svgPath } from "../strokes/outline";
 import { adjustShape, recognizeShape, shapePoints, type Shape } from "../strokes/shapes";
+import { handlesOf, scaleFactors, tapCommand, type Axes } from "./gestures";
 import { BACKGROUND_COLOR, BACKGROUND_LINE_WIDTH, backgroundLines, clampView, fitWidth, PAGE_H, PAGE_W, toPage, zoomAt, type View } from "./view";
 
 export type Tool =
@@ -21,6 +22,8 @@ export interface CanvasEvents {
   onState(state: { canUndo: boolean; canRedo: boolean; hasSelection: boolean }): void;
   /** The one-shot eraser removed something and the pen lifted: go back to the pen. */
   onEraseEnd(): void;
+  /** The page at the centre of the screen changed, or pages were added. Both 1-based counts. */
+  onPage(current: number, total: number): void;
 }
 
 const GAP = 16; // between pages, in page units
@@ -37,6 +40,7 @@ const HOLD_RADIUS = 8; // screen px the pen may drift and still count as "still"
 const ERASER_RADIUS = 10; // screen px
 const HANDLE_RADIUS = 18; // screen px, touch target of a selection corner
 const SELECT_COLOR = "#1d4ed8";
+const DUPLICATE_OFFSET = 14; // page units: one grid square down and right
 
 interface Drawn {
   stroke: Stroke;
@@ -66,7 +70,7 @@ type Current =
   | { mode: "ink"; id: number; page: number; points: Point[]; shape: Shape | null; base: Shape | null; snapFrom: XY; holdAnchor: XY }
   | { mode: "erase"; id: number; last: XY; at: XY; removed: Stroke[] }
   | { mode: "lasso"; id: number; page: number; points: XY[] }
-  | { mode: "move" | "scale"; id: number; start: XY; now: XY; anchor: XY };
+  | { mode: "move" | "scale"; id: number; start: XY; now: XY; anchor: XY; axes: Axes };
 
 const thinningOf = (tool: string) => (tool === "highlighter" ? 0 : 0.3);
 
@@ -108,6 +112,10 @@ export class NotebookCanvas {
   private touches = new Map<number, XY>(); // fingers taking part in pan/zoom
   private lastPen = -Infinity;
   private gesture: { view: View; t: number } | null = null; // where the view was when fingers arrived
+  /** The finger contact in progress, while it could still turn out to be a tap. */
+  private tap: { t0: number; lastDown: number; fingers: number; travel: number; origins: Map<number, XY> } | null = null;
+  private gestures = true;
+  private shownPage = "";
   private velocity: XY = [0, 0]; // px per ms, for the glide after a flick
   private lastMove = 0;
   private glideFrame = 0;
@@ -178,6 +186,29 @@ export class NotebookCanvas {
   setTool(tool: Tool) {
     this.tool = tool;
     if (tool.kind !== "lasso") this.select(null);
+  }
+
+  /** Turn the two- and three-finger taps on or off. */
+  setGestures(on: boolean) {
+    this.gestures = on;
+  }
+
+  /** A copy of the selection, slightly offset and selected, ready to be dragged into place. */
+  duplicateSelection() {
+    const sel = this.selection;
+    if (!sel) return;
+    const now = Date.now();
+    const copies = sel.items.map((d, i): Stroke => ({
+      ...d.stroke,
+      id: crypto.randomUUID(),
+      points: d.stroke.points.map(([x, y, pr]): Point => [x + DUPLICATE_OFFSET, y + DUPLICATE_OFFSET, pr]),
+      created_at: now + i, // on top, in the same order as the originals
+    }));
+    this.commit({ before: [], after: copies });
+    const ids = new Set(copies.map((s) => s.id));
+    const items = this.pages[sel.page].drawn.filter((d) => ids.has(d.stroke.id));
+    this.select({ page: sel.page, items, box: unionBox(items.map((d) => d.box)) });
+    this.growIfLastHasInk();
   }
 
   undo() {
@@ -260,6 +291,16 @@ export class NotebookCanvas {
     db.pages.add(page).catch(() => this.events.onError("No se pudo guardar la página nueva."));
     this.pages.push({ page, drawn: [], loaded: true });
     this.invalidate();
+    this.reportPage();
+  }
+
+  private reportPage() {
+    if (!this.pages.length) return;
+    const current = this.pageAt(toPage(this.view, 0, this.host.clientHeight / 2)[1]) + 1;
+    const key = `${current}/${this.pages.length}`;
+    if (key === this.shownPage) return;
+    this.shownPage = key;
+    this.events.onPage(current, this.pages.length);
   }
 
   private get docHeight() {
@@ -274,6 +315,7 @@ export class NotebookCanvas {
     const { host } = this;
     this.view = clampView(next, host.clientWidth, host.clientHeight, this.docHeight);
     this.loadVisible();
+    this.reportPage();
     // Follow the finger at once by moving the already-drawn canvas, then redraw the
     // ink for the new view at full screen resolution: next frame when drawing is
     // cheap, or as soon as the gesture pauses when the page is very full.
@@ -426,8 +468,8 @@ export class NotebookCanvas {
     ctx.strokeRect(box[0], box[1], box[2] - box[0], box[3] - box[1]);
     ctx.setLineDash([]);
     ctx.fillStyle = "#fff";
-    const r = 5 / s;
-    for (const [x, y] of cornersOf(box)) {
+    for (const { at: [x, y], axes } of handlesOf(box)) {
+      const r = (axes === "both" ? 5 : 3.5) / s; // corners keep proportions; the smaller edge ones stretch
       ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
       ctx.strokeRect(x - r, y - r, 2 * r, 2 * r);
     }
@@ -494,18 +536,12 @@ export class NotebookCanvas {
     return [x * this.view.s + this.view.tx, (y + page * PITCH) * this.view.s + this.view.ty];
   }
 
-  private transformOf(c: { mode: "move" | "scale"; start: XY; now: XY; anchor: XY }): (x: number, y: number) => XY {
+  private transformOf(c: { mode: "move" | "scale"; start: XY; now: XY; anchor: XY; axes: Axes }): (x: number, y: number) => XY {
     if (c.mode === "move") {
       const dx = c.now[0] - c.start[0], dy = c.now[1] - c.start[1];
       return (x, y) => [x + dx, y + dy];
     }
-    // Stretch from the opposite corner; never collapse to nothing.
-    const factor = (i: 0 | 1) => {
-      const d = c.start[i] - c.anchor[i];
-      const k = d ? (c.now[i] - c.anchor[i]) / d : 1;
-      return Math.abs(k) < 0.05 ? 0.05 * (k < 0 ? -1 : 1) : k;
-    };
-    const sx = factor(0), sy = factor(1);
+    const [sx, sy] = scaleFactors(c.start, c.now, c.anchor, c.axes);
     return (x, y) => [c.anchor[0] + (x - c.anchor[0]) * sx, c.anchor[1] + (y - c.anchor[1]) * sy];
   }
 
@@ -534,8 +570,17 @@ export class NotebookCanvas {
       // Palm rejection: a touch landing while the pen works, or right after, is ignored
       // (it never enters `touches`, so its moves do nothing).
       if (this.current || performance.now() - this.lastPen < PALM_MS) return;
-      if (!this.touches.size) this.gesture = { view: this.view, t: performance.now() };
+      const t = performance.now();
+      if (!this.touches.size) {
+        this.gesture = { view: this.view, t };
+        this.tap = { t0: t, lastDown: t, fingers: 0, travel: 0, origins: new Map() };
+      }
       this.touches.set(e.pointerId, this.pos(e));
+      if (this.tap) {
+        this.tap.lastDown = t;
+        this.tap.fingers = Math.max(this.tap.fingers, this.touches.size);
+        this.tap.origins.set(e.pointerId, this.pos(e));
+      }
       this.stopGlide();
       return;
     }
@@ -551,6 +596,7 @@ export class NotebookCanvas {
       this.applyView(this.gesture.view);
     }
     this.touches.clear();
+    this.tap = null; // fingers that share the glass with the pen are a hand, not a tap
     this.stopGlide();
     this.lastPen = performance.now();
     const id = e.pointerId;
@@ -584,14 +630,14 @@ export class NotebookCanvas {
     const sel = this.selection;
     if (!sel) return null;
     const at = this.pos(e);
-    const corners = cornersOf(sel.box);
-    const hit = corners.findIndex((c) => {
-      const sc = this.toScreen(sel.page, c);
+    // Corners come first in the list, so on a small selection they win over the edges.
+    const handle = handlesOf(sel.box).find((h) => {
+      const sc = this.toScreen(sel.page, h.at);
       return Math.hypot(sc[0] - at[0], sc[1] - at[1]) <= HANDLE_RADIUS;
     });
     const p = this.local(e, sel.page);
-    if (hit >= 0) return { mode: "scale", id, start: corners[hit], now: corners[hit], anchor: corners[(hit + 2) % 4] };
-    if (inBox(sel.box, p[0], p[1])) return { mode: "move", id, start: p, now: p, anchor: p };
+    if (handle) return { mode: "scale", id, start: handle.at, now: handle.at, anchor: handle.anchor, axes: handle.axes };
+    if (inBox(sel.box, p[0], p[1])) return { mode: "move", id, start: p, now: p, anchor: p, axes: "both" };
     return null;
   }
 
@@ -647,6 +693,8 @@ export class NotebookCanvas {
     if (!prev) return;
     const now = this.pos(e);
     touches.set(e.pointerId, now);
+    const origin = this.tap?.origins.get(e.pointerId);
+    if (this.tap && origin) this.tap.travel = Math.max(this.tap.travel, Math.hypot(now[0] - origin[0], now[1] - origin[1]));
     if (touches.size === 1) {
       const t = performance.now();
       const dt = Math.max(1, t - this.lastMove);
@@ -694,6 +742,7 @@ export class NotebookCanvas {
   private up = (e: PointerEvent) => {
     if (e.pointerType === "touch") {
       if (!this.touches.delete(e.pointerId)) return;
+      if (this.touches.size === 0 && this.finishTap(e.type === "pointerup")) return;
       const flick = this.touches.size === 0 && e.type === "pointerup" && performance.now() - this.lastMove < 80;
       if (flick && Math.hypot(...this.velocity) > 0.1) this.glide();
       else this.velocity = [0, 0];
@@ -704,6 +753,22 @@ export class NotebookCanvas {
     // pointercancel ends here too: keep what was done rather than drop it.
     this.finish(c, e.type === "pointerup" ? e : null);
   };
+
+  /** All fingers are up: if that was a two- or three-finger tap, undo or redo. */
+  private finishTap(lifted: boolean): boolean {
+    const tap = this.tap;
+    this.tap = null;
+    if (!tap || !lifted || !this.gestures) return false;
+    const t = performance.now();
+    const command = tapCommand({ fingers: tap.fingers, duration: t - tap.t0, spread: tap.lastDown - tap.t0, travel: tap.travel });
+    if (!command) return false;
+    // Two fingers landing always nudge the page a little: put it back.
+    if (this.gesture) this.applyView(this.gesture.view);
+    this.velocity = [0, 0];
+    if (command === "undo") this.undo();
+    else this.redo();
+    return true;
+  }
 
   /** End the current stroke or gesture. `lift` is the pointerup that ended it, when there was one. */
   private finish(c: Current, lift: PointerEvent | null) {
@@ -819,8 +884,4 @@ export class NotebookCanvas {
     this.sizeCanvases();
     this.applyView(this.view);
   };
-}
-
-function cornersOf(b: Box): XY[] {
-  return [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]];
 }

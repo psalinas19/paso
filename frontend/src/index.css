@@ -38,6 +38,20 @@ body {
   transform-origin: 0 0;
 }
 
+/* Where you are in the notebook. Never in the way of the pen: it takes no touches. */
+.page-indicator {
+  position: fixed;
+  left: 50%;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgb(31 42 68 / 0.72);
+  color: #fff;
+  font-size: 13px;
+  pointer-events: none;
+}
+
 .toolbar {
   position: fixed;
   top: calc(8px + env(safe-area-inset-top));
@@ -651,4 +665,21 @@ html:has(.library) body {
 
 .banner-error {
   background: #9b1c1c;
+}
+
+/* A file picker dressed as a link: the real input stays in the label so a tap opens it. */
+.import {
+  display: block;
+  margin-top: 10px;
+  color: #1d4ed8;
+  font-size: 14px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.import input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
 }
