@@ -29,3 +29,6 @@ desktop.ini
 # Node (frontend, from phase 1 on)
 node_modules/
 dist/
+
+# Cloudflare local state
+.wrangler/
