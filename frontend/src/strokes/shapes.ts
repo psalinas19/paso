@@ -1,11 +1,13 @@
-// "Hold to snap": turn a hand-drawn stroke into a clean line, ellipse, triangle
-// or rectangle. Pure functions; thresholds are relative to the stroke's size so
+// "Hold to snap": turn a hand-drawn stroke into a clean line, arrow, ellipse,
+// triangle or rectangle. Pure functions; thresholds are relative to the stroke's size so
 // they behave the same at any zoom.
 import type { Point } from "./format";
 import { boxOf, distToSegment, type XY } from "./geometry";
 
 export type Shape =
   | { kind: "line"; a: XY; b: XY }
+  /** A line from `a` with a head at `b`. */
+  | { kind: "arrow"; a: XY; b: XY }
   | { kind: "ellipse"; c: XY; rx: number; ry: number; rot: number }
   | { kind: "polygon"; vertices: XY[] };
 
@@ -43,6 +45,58 @@ function corners(pts: XY[], eps: number): XY[] {
   return v;
 }
 
+const SNAP_STEP = Math.PI / 4; // horizontal, vertical and the two diagonals
+const SNAP_WITHIN = (6 * Math.PI) / 180;
+
+/**
+ * Where a line from `a` should end: if it is within a few degrees of horizontal,
+ * vertical or 45°, exactly on that direction (same length); otherwise where it is.
+ * Axes and circuit wires come out true without a ruler, and any other angle is
+ * still free.
+ */
+export function snapLineEnd(a: XY, b: XY): XY {
+  const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+  const nearest = Math.round(angle / SNAP_STEP) * SNAP_STEP;
+  if (Math.abs(angle - nearest) > SNAP_WITHIN) return b;
+  const length = dist(a, b);
+  // cos and sin of a right angle come out as 6e-17, not 0: clear that, so a level
+  // line has exactly the same y at both ends.
+  const part = (v: number) => (Math.abs(v) < 1e-9 ? 0 : v * length);
+  return [a[0] + part(Math.cos(nearest)), a[1] + part(Math.sin(nearest))];
+}
+
+/**
+ * A straight shaft that ends in a small flourish around its tip: the usual way
+ * to draw an arrow without lifting the pen (shaft, then one or two barbs).
+ */
+function recognizeArrow(pts: XY[]): Shape | null {
+  const a = pts[0];
+  // The tip is the point farthest from where the stroke began.
+  let tip = 0, reach = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const d = dist(a, pts[i]);
+    if (d > reach) { reach = d; tip = i; }
+  }
+  const b = pts[tip];
+  if (reach < 30 || tip === pts.length - 1) return null; // too short, or nothing after the tip
+
+  let shaft = 0, dev = 0;
+  for (let i = 1; i <= tip; i++) {
+    shaft += dist(pts[i - 1], pts[i]);
+    dev = Math.max(dev, distToSegment(pts[i][0], pts[i][1], a[0], a[1], b[0], b[1]));
+  }
+  if (reach < 0.85 * shaft || dev > Math.max(2, 0.05 * reach)) return null; // the shaft is not straight
+
+  let head = 0, spread = 0;
+  for (let i = tip + 1; i < pts.length; i++) {
+    head += dist(pts[i - 1], pts[i]);
+    spread = Math.max(spread, dist(b, pts[i]));
+  }
+  // The head stays near the tip and is a real barb, not the pen slipping as it stops.
+  if (spread > 0.35 * reach || spread < 0.08 * reach || head > 1.2 * reach) return null;
+  return { kind: "arrow", a, b: snapLineEnd(a, b) };
+}
+
 export function recognizeShape(points: ArrayLike<ArrayLike<number>>): Shape | null {
   const pts: XY[] = Array.from({ length: points.length }, (_, i) => [points[i][0], points[i][1]]);
   if (pts.length < 2) return null;
@@ -55,12 +109,12 @@ export function recognizeShape(points: ArrayLike<ArrayLike<number>>): Shape | nu
   if (chord >= 0.85 * length) {
     let dev = 0;
     for (const p of pts) dev = Math.max(dev, distToSegment(p[0], p[1], a[0], a[1], b[0], b[1]));
-    return dev <= Math.max(2, 0.05 * chord) ? { kind: "line", a, b } : null;
+    return dev <= Math.max(2, 0.05 * chord) ? { kind: "line", a, b: snapLineEnd(a, b) } : null;
   }
 
   const [x0, y0, x1, y1] = boxOf(pts);
   const w = x1 - x0, h = y1 - y0, diag = Math.hypot(w, h);
-  if (chord > 0.3 * diag) return null; // not closed: an arc, a letter, a scribble
+  if (chord > 0.3 * diag) return recognizeArrow(pts); // not closed: an arrow, or else an arc, a letter, a scribble
 
   // How far the stroke is from the ellipse inscribed in its bounding box.
   const c: XY = [(x0 + x1) / 2, (y0 + y1) / 2];
@@ -94,7 +148,7 @@ export function recognizeShape(points: ArrayLike<ArrayLike<number>>): Shape | nu
   return ellipseDev < 0.18 ? ellipse() : null;
 }
 
-function centre(shape: Exclude<Shape, { kind: "line" }>): XY {
+function centre(shape: Exclude<Shape, { kind: "line" | "arrow" }>): XY {
   if (shape.kind === "ellipse") return shape.c;
   const n = shape.vertices.length;
   return [shape.vertices.reduce((s, p) => s + p[0], 0) / n, shape.vertices.reduce((s, p) => s + p[1], 0) / n];
@@ -105,7 +159,7 @@ function centre(shape: Exclude<Shape, { kind: "line" }>): XY {
  * end; other shapes grow and turn around their centre as the pen moves.
  */
 export function adjustShape(shape: Shape, from: XY, to: XY): Shape {
-  if (shape.kind === "line") return { kind: "line", a: shape.a, b: to };
+  if (shape.kind === "line" || shape.kind === "arrow") return { kind: shape.kind, a: shape.a, b: snapLineEnd(shape.a, to) };
   const c = centre(shape);
   const r0 = dist(from, c), r1 = dist(to, c);
   if (r0 < 1) return shape;
@@ -136,6 +190,20 @@ export function shapePoints(shape: Shape): Point[] {
   if (shape.kind === "line") {
     edge(shape.a, shape.b);
     out.push([shape.b[0], shape.b[1], 0.5]);
+  } else if (shape.kind === "arrow") {
+    const { a, b } = shape;
+    const length = dist(a, b);
+    // The head grows with the arrow, within limits: readable on a short one, not clumsy on a long one.
+    const size = Math.min(18, Math.max(7, 0.18 * length));
+    const back = Math.atan2(a[1] - b[1], a[0] - b[0]);
+    const barb = (side: number): XY => [b[0] + size * Math.cos(back + side * 0.48), b[1] + size * Math.sin(back + side * 0.48)];
+    // One stroke, like every shape: shaft, out to one barb, back to the tip, out to the other.
+    edge(a, b);
+    edge(b, barb(1));
+    edge(barb(1), b);
+    edge(b, barb(-1));
+    const end = barb(-1);
+    out.push([end[0], end[1], 0.5]);
   } else if (shape.kind === "polygon") {
     shape.vertices.forEach((p, i) => edge(p, shape.vertices[(i + 1) % shape.vertices.length]));
     out.push([shape.vertices[0][0], shape.vertices[0][1], 0.5]);

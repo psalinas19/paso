@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { fractionInside, hitsStroke, type XY } from "./geometry";
-import { adjustShape, recognizeShape, shapePoints } from "./shapes";
+import { adjustShape, recognizeShape, shapePoints, snapLineEnd } from "./shapes";
 
 // Deterministic hand wobble.
 const wobble = (i: number, amp: number) => Math.sin(i * 12.9898) * amp;
@@ -78,4 +78,56 @@ test("eraser and lasso hit tests", () => {
   const loop: XY[] = [[-10, -10], [60, -10], [60, 10], [-10, 10]];
   expect(fractionInside(stroke, loop)).toBeGreaterThan(0.5);
   expect(fractionInside(stroke, [[200, 200], [210, 200], [210, 210]])).toBe(0);
+});
+
+test("a nearly level or nearly upright line comes out exact; other angles stay free", () => {
+  expect(snapLineEnd([10, 10], [210, 16])[1]).toBe(10); // 1.7 degrees off: level
+  expect(snapLineEnd([10, 10], [14, 210])[0]).toBe(10); // upright
+  const diagonal = snapLineEnd([0, 0], [100, 104]);
+  expect(diagonal[0]).toBeCloseTo(diagonal[1]); // 45 degrees
+  expect(snapLineEnd([10, 10], [210, 60])).toEqual([210, 60]); // 14 degrees: left as drawn
+  // Length is kept: snapping turns the line, it does not stretch it.
+  const end = snapLineEnd([0, 0], [100, 5]);
+  expect(end[0]).toBeCloseTo(Math.hypot(100, 5));
+
+  const drawn = recognizeShape(along([[10, 10], [210, 14]], 4, 1).slice(0, -1));
+  expect(drawn?.kind === "line" && drawn.b[1]).toBe(drawn?.kind === "line" && drawn.a[1]);
+  // While still holding the pen, the far end follows it and snaps the same way.
+  const held = adjustShape({ kind: "line", a: [0, 0], b: [50, 50] }, [50, 50], [3, 120]);
+  expect(held.kind === "line" && held.b[0]).toBe(0);
+  expect(held.kind === "line" && held.b[1]).toBeCloseTo(Math.hypot(3, 120));
+});
+
+test("a shaft with a barb at the end snaps to an arrow", () => {
+  // Shaft to the right, one barb back and up, back to the tip, one barb back and down.
+  const drawn = along([[100, 200], [260, 203], [240, 190], [259, 202], [242, 214]], 3, 0.8).slice(0, -1);
+  const shape = recognizeShape(drawn);
+  expect(shape?.kind).toBe("arrow");
+  if (shape?.kind !== "arrow") return;
+  expect(shape.a).toEqual(drawn[0]);
+  expect(shape.b[1]).toBe(shape.a[1]); // nearly level, so made level
+  expect(shape.b[0]).toBeGreaterThan(250);
+
+  const points = shapePoints(shape);
+  // One stroke that reaches the tip, and whose head spreads to both sides of the shaft.
+  expect(points.some((p) => Math.hypot(p[0] - shape.b[0], p[1] - shape.b[1]) < 0.01)).toBe(true);
+  const ys = points.map((p) => p[1] - shape.a[1]);
+  expect(Math.min(...ys)).toBeLessThan(-4);
+  expect(Math.max(...ys)).toBeGreaterThan(4);
+  expect(Math.max(...points.map((p) => p[0]))).toBeCloseTo(shape.b[0]); // nothing sticks out past the tip
+
+  // A single barb is enough.
+  expect(recognizeShape(along([[100, 200], [260, 200], [240, 188]], 3, 0.8).slice(0, -1))?.kind).toBe("arrow");
+});
+
+test("letters with a straight stroke are not arrows", () => {
+  const stroke = (v: XY[]) => recognizeShape(along(v, 3, 0.8).slice(0, -1));
+  expect(stroke([[100, 100], [160, 100], [120, 220]])?.kind).not.toBe("arrow"); // a 7
+  expect(stroke([[100, 100], [100, 220], [170, 220]])?.kind).not.toBe("arrow"); // an L
+  expect(stroke([[100, 160], [120, 200], [200, 100]])?.kind).not.toBe("arrow"); // a tick
+  // A "p": down, all the way back up, then a bowl at the top.
+  const p: XY[] = [[100, 100], [100, 220], [100, 105], [140, 110], [140, 150], [100, 155]];
+  expect(stroke(p)?.kind).not.toBe("arrow");
+  // A long line whose end merely wobbles as the pen stops is still a line.
+  expect(stroke([[100, 200], [260, 200], [258, 203]])?.kind).toBe("line");
 });

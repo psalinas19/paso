@@ -59,6 +59,10 @@ Aprobada en [el plan de mecánicas](../plan-mecanicas-y-app-nativa.md). Probada 
 
 **Panel de páginas.** **⋯ → Páginas…** abre las miniaturas; tocar una lleva a esa página con el mismo zoom. Cada miniatura se dibuja con el mismo contorno que la hoja, solo cuando entra a la vista. No reordena ni duplica todavía.
 
+**Flecha por pausa.** Un tramo recto que termina con una o dos barbas junto a la punta (como se dibuja una flecha sin levantar el lápiz) y el lápiz quieto se convierte en flecha. Se guarda como un solo trazo común: asta, barba, regreso a la punta, otra barba. La cabeza crece con la flecha, entre 7 y 18 unidades.
+
+**Las rectas se enderezan.** Una recta o flecha a menos de 6° de horizontal, vertical o 45° queda exactamente en esa dirección, sin cambiar su largo; también mientras se ajusta sin levantar. Cualquier otro ángulo sigue libre.
+
 **Las entradas del menú ⋯ van con clave por posición.** Con clave por texto, un ajuste cuyo rótulo cambia al tocarlo se reemplazaba a medio toque, el menú no se cerraba y el siguiente trazo se perdía cerrándolo.
 
 ## Limitaciones conocidas

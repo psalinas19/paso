@@ -46,7 +46,7 @@ En el iPad, en IndexedDB (base `paso`, tabla `strokes`), **un registro por trazo
 
 ## Formas
 
-Una recta, un círculo, un triángulo o un rectángulo hechos «por pausa» se guardan como un trazo común: sus `points` recorren la figura con presión `0.5`. No existe un tipo de forma en el formato.
+Una recta, una flecha, un círculo, un triángulo o un rectángulo hechos «por pausa» se guardan como un trazo común: sus `points` recorren la figura con presión `0.5`. No existe un tipo de forma en el formato.
 
 ## Exportación de un cuaderno (`.paso.json`)
 
