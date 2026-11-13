@@ -48,8 +48,11 @@ class AnthropicProvider(LLMProvider):
         api_key: str | None = None,
         client: anthropic.Anthropic | None = None,
         timeout: float = 120.0,
+        effort: str | None = None,
     ) -> None:
         self.model = model
+        #: None leaves the request as it always was, so the API default applies.
+        self._effort = effort
         # A bare Anthropic() also resolves an `ant auth login` profile, so an
         # unset ANTHROPIC_API_KEY does not necessarily mean no credentials.
         self._client = client or anthropic.Anthropic(
@@ -192,6 +195,8 @@ class AnthropicProvider(LLMProvider):
                 ],
                 messages=[{"role": "user", "content": content}],
                 output_format=output_format,
+                # parse() merges the output format into this, so both travel together.
+                **({"output_config": {"effort": self._effort}} if self._effort else {}),
             )
         except anthropic.APIStatusError as exc:
             raise ProviderError(f"El API respondió {exc.status_code}: {exc.message}") from exc

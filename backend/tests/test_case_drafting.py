@@ -139,7 +139,7 @@ def test_bad_ids_and_existing_cases_are_refused(bank, image):
 
 
 def test_the_command_drafts_from_a_stored_review_with_its_corrections(
-    bank, image, tmp_path, monkeypatch
+    bank, image, tmp_path, monkeypatch, capsys
 ):
     settings = Settings(anthropic_api_key="", app_token="t", data_dir=tmp_path / "data")
     settings.data_dir.mkdir()
@@ -168,6 +168,7 @@ def test_the_command_drafts_from_a_stored_review_with_its_corrections(
         db.commit()
 
     assert case_cli.main(["--cases-dir", str(bank), "list"]) == 0
+    assert case_cli.main(["--cases-dir", str(bank), "show", "abc123"]) == 0
     assert case_cli.main(["--cases-dir", str(bank), "new", "nope", "--id", "gen-02"]) == 2
     assert case_cli.main(["--cases-dir", str(bank), "new", "abc123", "--id", "gen-02"]) == 0
 
@@ -176,3 +177,6 @@ def test_the_command_drafts_from_a_stored_review_with_its_corrections(
     assert proposed[2]["sympy"] == "Eq(x, 3)" and proposed[2]["expected_status"] == "correct"
     meta = (bank / "gen-02" / "meta.yaml").read_text(encoding="utf-8")
     assert "abc123" in meta and "s3" in meta
+    # `show` prints what was read and judged, whole, for pasting into a report.
+    shown = capsys.readouterr().out
+    assert "sympy: Eq(x, 3)" in shown and "corregido a mano" in shown and "-> correct" in shown

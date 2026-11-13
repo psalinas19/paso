@@ -594,3 +594,59 @@ def test_explanations_and_solutions_follow_corrections_budget_and_token(client, 
     for what in ("level/2", "solve"):
         assert ask(client, first["id"], what).status_code == 402
     assert provider.calls == calls
+
+
+# --- confirming a reading, timings, the effort knob ---------------------------
+
+
+def test_saving_a_doubtful_reading_unchanged_confirms_it_for_free(client, settings, provider):
+    low = mkstep("s2", "Eq(2*x, 6)", K.EQUATION, R.EQUIVALENT, ("s1",), confidence=0.4)
+    original = provider.extract_steps
+
+    def doubtful(image, system_prompt, instruction):
+        result = original(image, system_prompt, instruction)
+        result.steps[1] = low
+        return result
+
+    provider.extract_steps = doubtful
+    first = post_check(client).json()
+    assert first["recognition"]["steps"][1]["confidence"] == 0.4
+    calls = provider.calls
+
+    body = correct(client, first["id"], "s2", "Eq(2*x, 6)").json()
+
+    assert body["recognition"]["steps"][1]["confidence"] == 1.0
+    assert body["cost_usd"] == 0 and provider.calls == calls
+    assert body["corrected"] == []  # confirmed, not rewritten
+    assert statuses(body) == statuses(first)
+
+
+def test_every_answer_says_where_the_time_went(client, provider):
+    original = provider.extract_steps
+
+    def slow(image, system_prompt, instruction):
+        result = original(image, system_prompt, instruction)
+        result.usage.latency_ms = 4200
+        return result
+
+    provider.extract_steps = slow
+    body = post_check(client).json()
+
+    assert body["model_seconds"] == 4.2
+    assert body["verify_seconds"] >= 0
+    # A stored answer cost no time at the model.
+    ask(client, body["id"], "solve")
+    assert ask(client, body["id"], "solve").json()["model_seconds"] == 0
+
+
+def test_the_effort_setting_reaches_the_provider(monkeypatch):
+    from app.cli_common import build_provider
+
+    built = {}
+    monkeypatch.setattr(
+        "app.cli_common.AnthropicProvider", lambda **kwargs: built.update(kwargs) or "provider"
+    )
+    build_provider(Settings(anthropic_api_key="k", anthropic_effort=" Medium "))
+    assert built["effort"] == "medium"
+    build_provider(Settings(anthropic_api_key="k", anthropic_effort=""))
+    assert built["effort"] is None  # untouched: the API default applies

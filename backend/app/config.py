@@ -30,6 +30,11 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5-5"
+    #: How hard the model thinks before answering: low, medium, high, xhigh or
+    #: max. Empty leaves the API default (high). Lower is faster and cheaper;
+    #: whether reading and explanations stay as good has to be measured with
+    #: `app.eval` (SPEC 12.4).
+    anthropic_effort: str = ""
 
     max_image_edge: int = Field(default=1600, ge=256, le=8000)
     verify_timeout_seconds: float = Field(default=10.0, gt=0)

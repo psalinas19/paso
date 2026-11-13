@@ -38,6 +38,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     commands.add_parser("list", help="Lista las revisiones guardadas, la más reciente primero.")
 
+    show = commands.add_parser(
+        "show", help="Imprime una revisión completa, para pegarla al reportar un problema."
+    )
+    show.add_argument("review", help="Id de la revisión, o sus primeros caracteres.")
+
     new = commands.add_parser("new", help="Crea el borrador de un caso desde una revisión.")
     new.add_argument("review", help="Id de la revisión, o sus primeros caracteres.")
     new.add_argument("--id", required=True, dest="case_id", help="Id del caso: ed-01.")
@@ -78,6 +83,39 @@ def cmd_list(console: Console, db: Session) -> int:
             str(len(corrected)),
         )
     console.print(table)
+    return 0
+
+
+def cmd_show(db: Session, args: argparse.Namespace) -> int:
+    """Everything needed to reproduce what the app said about one review, as
+    plain text. No image and nothing personal: only what was read and judged."""
+    check = _find(db, args.review)
+    steps, corrected = current_steps(check)
+    verdicts = VerificationResult.model_validate_json(check.verification_json).by_id()
+    lines = [
+        f"revisión {check.id[:8]} · materia {check.subject} · modelo {check.model} · "
+        f"prompt {check.prompt_version}",
+    ]
+    for step in steps:
+        verdict = verdicts.get(step.id)
+        lines.append(
+            f"{step.id} | {step.kind.value} | {step.relation.value} | "
+            f"sale de: {','.join(step.derives_from) or '-'} | confianza {step.confidence:.2f}"
+            f"{' | corregido a mano' if step.id in corrected else ''}"
+        )
+        lines.append(f"    latex: {step.latex}")
+        lines.append(f"    sympy: {step.sympy}")
+        if verdict:
+            lines.append(f"    -> {verdict.status.value} ({verdict.method_used}): {verdict.detail}")
+    for label, stored in (
+        ("pista", check.hint_json),
+        ("explicación", check.explanation_json),
+        ("solución", check.solution_json),
+    ):
+        if stored:
+            lines += ["", f"{label}: {stored}"]
+    # Plain print: rich would wrap long lines and eat the brackets of a formula.
+    print("\n".join(lines))
     return 0
 
 
@@ -170,6 +208,8 @@ def main(argv: list[str] | None = None) -> int:
         with Session(make_engine(settings.resolved_database_url)) as db:
             if args.command == "list":
                 return cmd_list(console, db)
+            if args.command == "show":
+                return cmd_show(db, args)
             return cmd_new(console, db, args, cases_dir)
     except DraftError as exc:
         console.print(f"[red]{exc}[/red]")

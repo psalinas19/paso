@@ -42,11 +42,15 @@ def problem_data(steps: list[Step]) -> list[Step]:
     """
     givens = [s for s in steps if s.relation is StepRelation.GIVEN and s.is_symbolic]
     if not givens:
-        first = next((s for s in steps if s.is_symbolic), None)
+        # No data the verifier can use. The problem is still on the page: take
+        # the first line with formulas, or failing that the first readable line.
+        # The solution then cannot be anchored to it, and will say so instead of
+        # carrying the badge -- but refusing to solve helps nobody.
+        first = next((s for s in steps if s.is_symbolic), None) or next(
+            (s for s in steps if s.legible and s.latex.strip()), None
+        )
         if first is None:
-            raise NothingToSolveError(
-                "No encontré un enunciado con contenido matemático que resolver."
-            )
+            raise NothingToSolveError("No encontré en la selección nada legible que resolver.")
         givens = [first]
     return [
         s.model_copy(update={"id": f"g{i}", "relation": StepRelation.GIVEN, "derives_from": []})

@@ -13,6 +13,7 @@ Run from backend/:
 
 import secrets
 import threading
+import time
 import uuid
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
@@ -83,6 +84,10 @@ class CheckResponse(BaseModel):
     solution: Solution | None = None
     #: What this call cost, not the review's running total.
     cost_usd: float
+    #: Where this call's time went, in seconds: waiting for the model, and
+    #: checking the steps. The rest of what the user waited is network.
+    model_seconds: float = 0.0
+    verify_seconds: float = 0.0
     usage: UsageSummary
 
 
@@ -201,7 +206,13 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         except SubjectNotFoundError as exc:
             raise HTTPException(404, str(exc)) from exc
 
-    def respond(db: Session, row: Check, cost: float) -> CheckResponse:
+    def respond(
+        db: Session,
+        row: Check,
+        cost: float,
+        model_ms: float = 0.0,
+        verify_seconds: float = 0.0,
+    ) -> CheckResponse:
         steps, corrected = current_steps(row)
         recognition = RecognitionResult.model_validate_json(row.steps_json)
         return CheckResponse(
@@ -217,6 +228,8 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
             ),
             solution=Solution.model_validate_json(row.solution_json) if row.solution_json else None,
             cost_usd=round(cost, 4),
+            model_seconds=round(model_ms / 1000, 2),
+            verify_seconds=round(verify_seconds, 2),
             usage=summary(db),
         )
 
@@ -254,8 +267,10 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
             path.unlink(missing_ok=True)
             raise HTTPException(502, str(exc)) from exc
 
+        started = time.perf_counter()
         with worker_lock:
             verification = verify_recognition(subject_config, recognition, worker=worker)
+        verifying = time.perf_counter() - started
 
         cost = charge(db, "check", recognition.usage)
         row = Check(
@@ -270,7 +285,8 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         )
         db.add(row)
         db.commit()
-        return respond(db, row, cost)
+        reading = recognition.usage.latency_ms if recognition.usage and cost else 0
+        return respond(db, row, cost, reading, verifying)
 
     @app.post("/api/checks/{check_id}/steps/{step_id}", dependencies=auth)
     def correct(
@@ -288,7 +304,17 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         if len(latex) > MAX_LATEX_CHARS:
             raise HTTPException(422, "El paso es demasiado largo. Corrige un renglón a la vez.")
         if latex == current.latex.strip():
-            return respond(db, row, 0.0)  # nothing changed: nothing to pay for
+            # Nothing changed: nothing to pay for. But saving a doubtful reading
+            # as it stands is the student saying "yes, that is what I wrote".
+            if current.is_low_confidence:
+                confirmed = [
+                    s.model_copy(update={"confidence": 1.0}) if s.id == step_id else s
+                    for s in steps
+                ]
+                row.corrected_steps_json = dump_steps(confirmed)
+                db.add(row)
+                db.commit()
+            return respond(db, row, 0.0)
 
         refuse_over_budget(db)
         try:
@@ -298,8 +324,10 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         except ProviderError as exc:
             raise HTTPException(502, str(exc)) from exc
 
+        started = time.perf_counter()
         with worker_lock:
             verification = verify(subject_config, updated, worker=worker)
+        verifying = time.perf_counter() - started
 
         cost = charge(db, "correct", usage)
         row.corrected_steps_json = dump_steps(updated)
@@ -308,7 +336,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         row.hint_json = row.explanation_json = row.solution_json = None
         db.add(row)
         db.commit()
-        return respond(db, row, cost)
+        return respond(db, row, cost, usage.latency_ms, verifying)
 
     @app.post("/api/checks/{check_id}/hint", dependencies=auth)
     def hint(db: Db, check_id: str) -> CheckResponse:
@@ -333,7 +361,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         row.hint_json = result.model_dump_json()
         db.add(row)
         db.commit()
-        return respond(db, row, cost)
+        return respond(db, row, cost, usage.latency_ms if usage else 0)
 
     def picture_of(row: Check):
         try:
@@ -341,10 +369,15 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         except (OSError, UnidentifiedImageError):
             return None  # the tutor still works from the transcription alone
 
-    def verifier_for(subject_config: SubjectConfig):
+    def verifier_for(subject_config: SubjectConfig, spent: list[float]):
+        """The verifier as the tutor calls it; `spent` collects how long it took."""
+
         def run(steps: list[Step]) -> VerificationResult:
+            started = time.perf_counter()
             with worker_lock:
-                return verify(subject_config, steps, worker=worker)
+                result = verify(subject_config, steps, worker=worker)
+            spent.append(time.perf_counter() - started)
+            return result
 
         return run
 
@@ -358,13 +391,14 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         refuse_over_budget(db)
         steps, _ = current_steps(row)
         verification = VerificationResult.model_validate_json(row.verification_json)
+        spent: list[float] = []
         try:
             result, usage = build_explanation(
                 subject_config,
                 steps,
                 verification,
                 model(),
-                verifier_for(subject_config),
+                verifier_for(subject_config, spent),
                 picture_of(row),
             )
         except ProviderError as exc:
@@ -375,7 +409,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         row.max_level_shown = max(row.max_level_shown, 2)
         db.add(row)
         db.commit()
-        return respond(db, row, cost)
+        return respond(db, row, cost, usage.latency_ms, sum(spent))
 
     @app.post("/api/checks/{check_id}/solve", dependencies=auth)
     def solve(db: Db, check_id: str) -> CheckResponse:
@@ -387,13 +421,14 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         refuse_over_budget(db)
         steps, _ = current_steps(row)
         verification = VerificationResult.model_validate_json(row.verification_json)
+        spent = []
         try:
             result, usages = build_solution(
                 subject_config,
                 steps,
                 verification,
                 model(),
-                verifier_for(subject_config),
+                verifier_for(subject_config, spent),
                 picture_of(row),
             )
         except NothingToSolveError as exc:
@@ -406,7 +441,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         row.max_level_shown = 3
         db.add(row)
         db.commit()
-        return respond(db, row, cost)
+        return respond(db, row, cost, sum(u.latency_ms for u in usages), sum(spent))
 
     return app
 

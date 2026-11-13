@@ -28,7 +28,11 @@ def build_provider(settings: Settings) -> LLMProvider:
             "Falta ANTHROPIC_API_KEY. Copia backend/.env.example a backend/.env y "
             "pon tu clave, o inicia sesión con `ant auth login`."
         )
-    return AnthropicProvider(model=settings.anthropic_model, api_key=settings.anthropic_api_key)
+    return AnthropicProvider(
+        model=settings.anthropic_model,
+        api_key=settings.anthropic_api_key,
+        effort=settings.anthropic_effort.strip().lower() or None,
+    )
 
 
 def _short(text: str, limit: int) -> str:

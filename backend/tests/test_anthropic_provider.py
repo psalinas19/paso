@@ -129,3 +129,18 @@ def test_explaining_and_solving_are_structured_calls_with_their_own_schemas():
     assert draft.whys == {"r1": "Dividiendo entre 2."} and draft.usage.endpoint == "solve"
     assert [b["type"] for b in messages.request["messages"][0]["content"]] == ["image", "text"]
     assert messages.request["output_format"] is SolutionPayload
+
+
+def test_effort_is_sent_only_when_configured():
+    payload = HintPayload(step_id=None, error_type=None, hint="")
+    messages = FakeMessages(payload)
+    client = SimpleNamespace(messages=messages)
+
+    AnthropicProvider("claude-sonnet-5-5", client=client).write_hint(PROMPT, "x", None)
+    assert "output_config" not in messages.request
+
+    AnthropicProvider("claude-sonnet-5-5", client=client, effort="low").write_hint(
+        PROMPT, "x", None
+    )
+    assert messages.request["output_config"] == {"effort": "low"}
+    assert messages.request["output_format"] is HintPayload  # the schema still travels
