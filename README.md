@@ -289,4 +289,4 @@ Hay además un plan pendiente de tu aprobación sobre gestos de la libreta y la 
 
 **Fase 3 construida** (explicación, solución, chat y cola sin conexión), pendiente de probar con el modelo real.
 
-Después, Fases 4 y 5 (chat, cola sin conexión, banco de errores, respaldo automático, despliegue del backend) según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.
+Después, la Fase 4 (banco de errores, modo repaso, búsqueda en todas las notas, exportar una revisión a LaTeX, graficar) y la Fase 5 (backend en un servidor para no depender de la laptop, respaldo automático, archivar semestres), según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.
