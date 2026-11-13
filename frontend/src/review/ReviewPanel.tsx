@@ -12,13 +12,13 @@ export type ReviewState =
   | { kind: "result"; review: Review }
   | { kind: "history" };
 
-const MARK: Record<StepStatus, { symbol: string; label: string }> = {
+export const MARK: Record<StepStatus, { symbol: string; label: string }> = {
   correct: { symbol: "✓", label: "Correcto" },
   error: { symbol: "✕", label: "Error" },
   unverifiable: { symbol: "⚠", label: "No verificable" },
 };
 
-function Latex({ source }: { source: string }) {
+export function Latex({ source }: { source: string }) {
   // KaTeX escapes its input and runs with trust off, so model text cannot inject markup.
   const html = katex.renderToString(source, { throwOnError: false, displayMode: true, strict: "ignore" });
   return <div className="latex" dangerouslySetInnerHTML={{ __html: html }} />;
@@ -34,7 +34,7 @@ function Elapsed({ since }: { since: number }) {
 }
 
 /** Tutor text: prose with `$...$` maths. */
-function Prose({ text }: { text: string }) {
+export function Prose({ text }: { text: string }) {
   return (
     <p>
       {splitMath(text).map((part, i) =>

@@ -43,6 +43,10 @@ export interface Review {
   created_at: number;
   recognition: CheckResponse["recognition"];
   verification: CheckResponse["verification"];
+  /** The strokes that were reviewed. Absent in reviews saved before marks existed: those get none. */
+  stroke_ids?: string[];
+  /** Which strokes are each step, when that could be told without guessing (see review/marks.ts). */
+  step_strokes?: Record<string, string[]> | null;
   /** Steps the student retyped. Absent in reviews saved before corrections existed. */
   corrected?: string[];
   /** Level-1 hint, once asked for. Cleared when a step is corrected. */

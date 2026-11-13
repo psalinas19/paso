@@ -67,6 +67,28 @@ Construida y probada **solo con el proveedor simulado**. Ninguna de estas piezas
 - Una revisión abierta desde «Revisiones guardadas» necesita el backend encendido, con su misma base de datos, para corregir o pedir pista.
 - No hay registro de errores confirmados (banco de errores, Fase 4).
 
+## Entrega 2c, etapa 1: marcas sobre la hoja (2026-11-13)
+
+Plan y motivos en [plan-fase2c-marcas.md](../plan-fase2c-marcas.md). Construida sin tocar al modelo; probada en navegador de escritorio, **no en el iPad**.
+
+**Dónde está cada paso se deduce solo de la tinta, y solo cuando no hay duda.** Los trazos de la selección se agrupan en renglones por su altura (una fracción cuenta como un renglón; una letra que baja al renglón siguiente no los une). Si hay **exactamente** tantos renglones como pasos, se emparejan en orden. Con cualquier otra cuenta no se coloca ninguno: la revisión lleva **una sola insignia** en su esquina. Repartir «a ojo» pondría un ✕ junto a un renglón correcto.
+
+**Una marca recuerda sus trazos, no una coordenada.** Se dibuja junto a la caja de sus trazos tal como están ahora: si mueves el desarrollo con el lazo, va con él; si borras el renglón, desaparece. Si se borró parte de lo revisado, las marcas que quedan se ponen grises («revisión desactualizada») en vez de fingir que el veredicto sigue describiendo la hoja.
+
+**Los datos del enunciado no llevan marca**: nadie los comprobó. **La revisión más reciente de una misma tinta gana**; las anteriores no se dibujan.
+
+**Las marcas son vectores en el mismo lienzo que la tinta**, así que hacen zoom nítidas y no salen en el PDF (que se arma solo con trazos).
+
+**Tocar una marca abre una tarjeta junto a ella**, con el lápiz o con un dedo. Un toque del lápiz sobre una marca no deja tinta. La tarjeta muestra lo que comprobó el verificador y, aparte y rotulado, lo que el modelo haya dicho de ese paso (pista, comentario, corrección). Pedir la pista es un botón; nada se gasta solo. Se cierra al volver a escribir, salvo que se fije.
+
+### Limitaciones de la etapa 1
+
+- **No sé cuántas de tus revisiones caerán en «tantos renglones como pasos».** Si son pocas, verás casi siempre la insignia. Lo arregla la etapa 2 (que el modelo diga dónde está cada paso), que necesita el banco de pruebas.
+- Las revisiones hechas antes de este cambio no guardaron sus trazos y no tienen marcas.
+- La tarjeta se queda donde se abrió: no sigue a la hoja al desplazarla.
+- Un toque con el dedo sobre una marca no responde durante 0.4 s después de escribir (es el rechazo de palma).
+- El «Ver explicación completa» del SPEC abre el panel de la revisión; no hay chat todavía.
+
 ## Limitaciones conocidas de 2a
 
 - ~~No hay pista ni clasificación del error.~~ Resuelto en 2b.

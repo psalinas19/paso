@@ -184,6 +184,15 @@ Debajo de cada paso hay un enlace **Corregir lectura**. Escribe el paso en LaTeX
 - Si el backend no logra convertir lo que escribiste a una forma comprobable, el paso queda como **no verificable**, nunca como error.
 - Cada corrección es una llamada pequeña al modelo y se suma al costo de la revisión.
 
+### Marcas sobre la hoja
+
+Después de revisar, junto a cada renglón aparece una marca: **✓** verde (comprobado), **✕** rojo (error, con el renglón subrayado) o **!** ámbar (no se pudo comprobar). El enunciado no lleva marca.
+
+- **Toca una marca**, con el lápiz o con un dedo, y se abre una tarjeta con lo que se comprobó de ese paso y un botón para pedir la pista. Se cierra al volver a escribir; con *Fijar* se queda.
+- Si mueves el desarrollo con el lazo, las marcas se van con él. Si borras parte de lo revisado, se ponen **grises**: hay que revisar de nuevo.
+- Las marcas por renglón solo aparecen cuando la app puede distinguir sin duda qué renglón es cada paso. Si no, pone **una sola insignia** en la esquina del desarrollo, que abre la revisión completa. Es a propósito: una ✕ junto al renglón equivocado sería peor que ninguna.
+- No salen en el PDF.
+
 ### Las tres ayudas
 
 Después de revisar, el panel ofrece tres botones. Ninguno se pide solo, porque cada uno cuesta unos centavos:

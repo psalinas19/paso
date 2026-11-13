@@ -1,6 +1,6 @@
 # Plan de la entrega 2c: marcas sobre la hoja
 
-**Fecha:** 2026-11-13 · **Estado:** aprobado el 2026-11-13. **Todavía no hay nada construido.**
+**Fecha:** 2026-11-13 · **Estado:** aprobado el 2026-11-13. **Etapa 1 construida** (probada en navegador de escritorio con el backend simulado, falta el iPad). Etapa 2 sin empezar: espera el banco de pruebas.
 
 **Decisiones tomadas:** opción C en dos etapas; una marca se toca con el dedo o con el lápiz; insignia única cuando no se sabe dónde va cada paso; las marcas no salen en el PDF. La etapa 1 empieza después de la primera prueba en el iPad de lo ya construido; la etapa 2, cuando exista la línea base del banco de pruebas.
 

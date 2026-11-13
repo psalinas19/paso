@@ -3,7 +3,8 @@
 // Plain imperative code on purpose. Ink, pan and zoom change on every pointer
 // event; routing them through React state would re-render per event and add
 // latency. React only owns the toolbar and talks to this class through methods.
-import { db, loadPages, loadStrokes, type Page } from "../db";
+import { db, loadPages, loadStrokes, type Page, type Review } from "../db";
+import { MARK_RADIUS, markAnchor, markAt, marksFor, type Mark, type MarkTone } from "../review/marks";
 import { selectionFrame } from "../review/frame";
 import { STROKE_FORMAT_VERSION, type Point, type Stroke } from "../strokes/format";
 import { boxOf, fractionInside, hitsStroke, inBox, unionBox, type Box, type XY } from "../strokes/geometry";
@@ -24,6 +25,10 @@ export interface CanvasEvents {
   onEraseEnd(): void;
   /** The page at the centre of the screen changed, or pages were added. Both 1-based counts. */
   onPage(current: number, total: number): void;
+  /** A review mark was tapped; `x`, `y` are where it is on screen. */
+  onMark(mark: Mark, x: number, y: number): void;
+  /** The pen started doing something on the paper (so a floating card can get out of the way). */
+  onInk(): void;
 }
 
 const GAP = 16; // between pages, in page units
@@ -74,7 +79,63 @@ type Current =
   | { mode: "ink"; id: number; page: number; points: Point[]; shape: Shape | null; base: Shape | null; snapFrom: XY; holdAnchor: XY; time: number }
   | { mode: "erase"; id: number; last: XY; at: XY; removed: Stroke[] }
   | { mode: "lasso"; id: number; page: number; points: XY[] }
-  | { mode: "move" | "scale"; id: number; start: XY; now: XY; anchor: XY; axes: Axes };
+  | { mode: "move" | "scale"; id: number; start: XY; now: XY; anchor: XY; axes: Axes }
+  /** The pen came down on a review mark: a tap opens it, and no ink is laid. */
+  | { mode: "mark"; id: number; start: XY; mark: PlacedMark };
+
+interface PlacedMark {
+  mark: Mark;
+  page: number;
+  /** Centre of the mark, in the coordinates of its page. */
+  anchor: [number, number];
+  /** What it marks: the box of its strokes. */
+  box: Box;
+}
+
+const MARK_COLORS: Record<MarkTone, string> = { correct: "#16803c", error: "#b42318", unverifiable: "#b54708", stale: "#98a2b3" };
+
+/** A review mark: a white disc with a coloured ring and its sign, drawn as vectors like the ink. */
+function drawMark(ctx: CanvasRenderingContext2D, placed: PlacedMark) {
+  const { mark, anchor: [x, y], box } = placed;
+  const color = MARK_COLORS[mark.tone], r = MARK_RADIUS;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  if (mark.stepId && mark.tone === "error") {
+    // The line with the mistake is underlined (SPEC 6.4).
+    ctx.beginPath();
+    ctx.moveTo(box[0], box[3] + 2.5);
+    ctx.lineTo(box[2], box[3] + 2.5);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, 2 * Math.PI);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = mark.stepId ? 1.3 : 2.2; // the single badge of a review is heavier
+  ctx.stroke();
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if (mark.tone === "correct") {
+    ctx.moveTo(x - 3.2, y + 0.2);
+    ctx.lineTo(x - 0.9, y + 2.6);
+    ctx.lineTo(x + 3.4, y - 2.6);
+  } else if (mark.tone === "error") {
+    ctx.moveTo(x - 2.8, y - 2.8);
+    ctx.lineTo(x + 2.8, y + 2.8);
+    ctx.moveTo(x + 2.8, y - 2.8);
+    ctx.lineTo(x - 2.8, y + 2.8);
+  } else {
+    // "!" for could-not-check; the same sign, greyed, for a review that is out of date.
+    ctx.moveTo(x, y - 3.4);
+    ctx.lineTo(x, y + 0.8);
+    ctx.moveTo(x, y + 3.2);
+    ctx.lineTo(x, y + 3.3);
+  }
+  ctx.stroke();
+}
 
 const thinningOf = (tool: string) => (tool === "highlighter" ? 0 : 0.3);
 
@@ -118,6 +179,9 @@ export class NotebookCanvas {
   private gesture: { view: View; t: number } | null = null; // where the view was when fingers arrived
   /** The finger contact in progress, while it could still turn out to be a tap. */
   private tap: { t0: number; lastDown: number; fingers: number; travel: number; origins: Map<number, XY> } | null = null;
+  private reviews: Review[] = [];
+  /** The marks on screen as last drawn: what a tap is tested against. */
+  private placed: PlacedMark[] = [];
   private gestures = true;
   private scribbleErase = false;
   private shownPage = "";
@@ -201,6 +265,12 @@ export class NotebookCanvas {
   /** Turn the two- and three-finger taps on or off. */
   setGestures(on: boolean) {
     this.gestures = on;
+  }
+
+  /** The reviews of this notebook, whose marks are drawn beside the ink they judged. */
+  setReviews(reviews: Review[]) {
+    this.reviews = reviews;
+    this.invalidate();
   }
 
   /** Scribbling over ink with the pen erases it. Off unless the user turns it on. */
@@ -407,6 +477,7 @@ export class NotebookCanvas {
     ctx.clearRect(0, 0, this.ink.width, this.ink.height);
     const [x0, y0] = toPage(this.view, 0, 0);
     const [x1, y1] = toPage(this.view, this.host.clientWidth, this.host.clientHeight);
+    this.placed = [];
     for (let i = this.pageAt(y0); i <= this.pageAt(y1) && i < this.pages.length; i++) {
       const p = this.pages[i];
       const top = i * PITCH;
@@ -419,11 +490,43 @@ export class NotebookCanvas {
         if (d.box[2] < x0 || d.box[0] > x1 || d.box[3] < y0 - top || d.box[1] > y1 - top) continue;
         if (!this.hidden.has(d.stroke.id)) paint(ctx, d.path, d.stroke.color, d.stroke.tool);
       }
+      this.drawMarks(ctx, i);
       ctx.restore();
     }
     this.rendered = this.view;
     this.ink.style.transform = "";
     this.renderCost = performance.now() - started;
+  }
+
+  /**
+   * The review marks of one page. Each is placed from the strokes it belongs to
+   * as they are now, so it follows them when they are moved and disappears with
+   * them when they are erased.
+   */
+  private drawMarks(ctx: CanvasRenderingContext2D, index: number) {
+    const p = this.pages[index];
+    const here = this.reviews.filter((r) => r.page_id === p.page.id);
+    if (!here.length || !p.loaded) return;
+    const ink = new Map(p.drawn.map((d) => [d.stroke.id, d]));
+    for (const mark of marksFor(here, (id) => ink.has(id))) {
+      const box = unionBox(mark.strokeIds.map((id) => ink.get(id)!.box));
+      const placed: PlacedMark = { mark, page: index, anchor: markAnchor(box, !mark.stepId, PAGE_W), box };
+      this.placed.push(placed);
+      drawMark(ctx, placed);
+    }
+  }
+
+  /** The mark under a point of the screen, with a finger-sized target. */
+  private markUnder(at: XY): PlacedMark | undefined {
+    const [x, docY] = toPage(this.view, ...at);
+    const page = this.pageAt(docY);
+    const reach = Math.max(MARK_RADIUS, 18 / this.view.s);
+    return markAt(this.placed.filter((m) => m.page === page), x, docY - page * PITCH, reach);
+  }
+
+  private openMark(placed: PlacedMark) {
+    const [x, y] = this.toScreen(placed.page, placed.anchor);
+    this.events.onMark(placed.mark, x, y);
   }
 
   private sizeCanvases() {
@@ -645,6 +748,13 @@ export class NotebookCanvas {
     const id = e.pointerId;
     const page = this.pageAt(toPage(this.view, ...this.pos(e))[1]);
 
+    const mark = this.markUnder(this.pos(e));
+    if (mark) {
+      this.current = { mode: "mark", id, start: this.pos(e), mark };
+      return;
+    }
+    this.events.onInk();
+
     if (this.tool.kind === "eraser") {
       this.current = { mode: "erase", id, last: toPage(this.view, ...this.pos(e)), at: this.pos(e), removed: [] };
       this.eraseTo(e);
@@ -731,6 +841,7 @@ export class NotebookCanvas {
       }
       return this.scheduleOverlay((e.getPredictedEvents?.() ?? []).map(point));
     }
+    if (c.mode === "mark") return; // waiting to see whether this is a tap
     if (c.mode === "erase") this.eraseTo(e);
     else if (c.mode === "lasso") c.points.push(this.local(e, c.page));
     else c.now = this.local(e, this.selection!.page);
@@ -815,8 +926,20 @@ export class NotebookCanvas {
   private finishTap(lifted: boolean): boolean {
     const tap = this.tap;
     this.tap = null;
-    if (!tap || !lifted || !this.gestures) return false;
+    if (!tap || !lifted) return false;
     const t = performance.now();
+    if (tap.fingers === 1 && t - tap.t0 < 350 && tap.travel < 10) {
+      // One finger, down and up in place: a tap on a review mark opens it.
+      const [at] = tap.origins.values();
+      const mark = at && this.markUnder(at);
+      if (mark) {
+        if (this.gesture) this.applyView(this.gesture.view);
+        this.velocity = [0, 0];
+        this.openMark(mark);
+        return true;
+      }
+    }
+    if (!this.gestures) return false;
     const command = tapCommand({ fingers: tap.fingers, duration: t - tap.t0, spread: tap.lastDown - tap.t0, travel: tap.travel });
     if (!command) return false;
     // Two fingers landing always nudge the page a little: put it back.
@@ -833,6 +956,11 @@ export class NotebookCanvas {
     this.current = null;
     this.lastPen = performance.now();
 
+    if (c.mode === "mark") {
+      // A tap, not a drag that happened to start on the mark.
+      if (lift && Math.hypot(this.pos(lift)[0] - c.start[0], this.pos(lift)[1] - c.start[1]) < 12) this.openMark(c.mark);
+      return;
+    }
     if (c.mode === "ink" && (this.tool.kind === "pen" || this.tool.kind === "highlighter")) {
       if (!c.shape && lift) {
         // The lift position only arrives with pointerup. Without it a fast stroke ends
@@ -842,6 +970,7 @@ export class NotebookCanvas {
         if (x !== last[0] || y !== last[1]) c.points.push([x, y, last[2]]);
       }
       const p = this.pages[c.page];
+      if (!p) return this.drawOverlay(); // the page went away under the pen: nothing to write on
       if (this.scribbleErase && this.tool.kind === "pen" && !c.shape && isScribble(c.points)) {
         const hit = scribbleTargets(c.points, p.drawn.map((d) => d.stroke));
         if (hit.length) {

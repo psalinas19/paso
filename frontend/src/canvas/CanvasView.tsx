@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db, type Review } from "../db";
 import { ExportDialog } from "../export/ExportDialog";
+import { useLiveQuery } from "dexie-react-hooks";
 import { loadConfig, postCheck, postCorrection, postExplain, postHint, postSolve, type CheckResponse } from "../review/api";
+import { MarkCard, type OpenMark } from "../review/MarkCard";
+import { placeSteps } from "../review/marks";
+import { boxOf } from "../strokes/geometry";
 import { mergeReview, timingOf } from "../review/merge";
 import { ReviewPanel, type ReviewState } from "../review/ReviewPanel";
 import { SettingsDialog } from "../review/SettingsDialog";
@@ -38,6 +42,13 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   const [exporting, setExporting] = useState(false);
   const [settings, setSettings] = useState(false);
   const [panel, setPanel] = useState<ReviewState | null>(null);
+  // The card open beside a mark on the page, and whether it stays when writing resumes.
+  const [card, setCard] = useState<OpenMark | null>(null);
+  const [pinned, setPinned] = useState(false);
+  const pinnedRef = useRef(false);
+  pinnedRef.current = pinned;
+  // Every review of this notebook: the canvas draws their marks beside the ink.
+  const reviews = useLiveQuery(() => db.reviews.where("notebook_id").equals(notebookId).toArray(), [notebookId]);
   // What the one-shot eraser returns to.
   const writingTool = useRef<"pen" | "highlighter">(prefs.active);
 
@@ -53,6 +64,14 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
       onState: setState,
       onEraseEnd: () => setActive(writingTool.current),
       onPage: (current, total) => setWhere({ current, total }),
+      onMark: (mark, x, y) => {
+        setPinned(false);
+        setCard({ mark, x, y });
+      },
+      // Writing again puts an unpinned card away: it would be in the way of the pen.
+      onInk: () => {
+        if (!pinnedRef.current) setCard(null);
+      },
     });
     canvas.current = c;
     return () => c.destroy();
@@ -60,6 +79,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
 
   useEffect(() => canvas.current?.setTool(tool), [tool, notebookId, revision]);
   useEffect(() => canvas.current?.setGestures(gestures), [gestures, notebookId, revision]);
+  useEffect(() => canvas.current?.setReviews(reviews ?? []), [reviews, notebookId, revision]);
   useEffect(() => canvas.current?.setScribbleErase(scribble), [scribble, notebookId, revision]);
   useEffect(() => savePrefs({ active, pen, size, gestures, scribble }, writingTool.current), [active, pen, size, gestures, scribble]);
 
@@ -86,11 +106,15 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
       const slug = !subject || subject.template === "generic" ? "general" : subject.template;
       const started = performance.now();
       const result = await postCheck(loadConfig(), await snapshot.image, slug, snapshot.strokes);
+      const inked = snapshot.strokes.map((s) => ({ id: s.id, box: boxOf(s.points, s.size / 2) }));
       const saved: Review = {
         id: result.id,
         notebook_id: notebookId,
         page_id: snapshot.pageId,
         box: snapshot.box,
+        stroke_ids: inked.map((s) => s.id),
+        // Only when every step can be told apart on the page; otherwise the review gets one badge.
+        step_strokes: placeSteps(result.recognition.steps.map((s) => s.id), inked),
         created_at: Date.now(),
         recognition: result.recognition,
         verification: result.verification,
@@ -106,14 +130,18 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
     }
   };
   /** Apply the backend's answer to the review on screen and to its copy on the iPad. */
-  const update = async (request: (review: Review) => Promise<CheckResponse>) => {
-    if (panel?.kind !== "result") return;
+  const applyTo = async (review: Review, request: (review: Review) => Promise<CheckResponse>) => {
     const started = performance.now();
-    const response = await request(panel.review);
-    const next = mergeReview(panel.review, response, (performance.now() - started) / 1000);
+    const response = await request(review);
+    const next = mergeReview(review, response, (performance.now() - started) / 1000);
     await db.reviews.put(next);
-    setPanel({ kind: "result", review: next });
+    // The panel follows only if it is showing this same review.
+    setPanel((now) => (now?.kind === "result" && now.review.id === next.id ? { kind: "result", review: next } : now));
   };
+  const update = async (request: (review: Review) => Promise<CheckResponse>) => {
+    if (panel?.kind === "result") await applyTo(panel.review, request);
+  };
+  const carded = card && reviews?.find((r) => r.id === card.mark.reviewId);
   const actions = {
     onCorrect: (stepId: string, latex: string) => update((r) => postCorrection(loadConfig(), r.id, stepId, latex)),
     onHint: () => update((r) => postHint(loadConfig(), r.id)),
@@ -190,6 +218,21 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
             setPagesOpen(false);
           }}
           onClose={() => setPagesOpen(false)}
+        />
+      )}
+      {card && carded && (
+        <MarkCard
+          key={`${card.mark.reviewId}-${card.mark.stepId}`}
+          open={card}
+          review={carded}
+          pinned={pinned}
+          onPin={() => setPinned((p) => !p)}
+          onHint={() => applyTo(carded, (r) => postHint(loadConfig(), r.id))}
+          onOpenReview={() => {
+            setPanel({ kind: "result", review: carded });
+            setCard(null);
+          }}
+          onClose={() => setCard(null)}
         />
       )}
       {exporting && <ExportDialog notebookId={notebookId} onClose={closeExport} onError={onError} />}
