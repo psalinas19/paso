@@ -29,6 +29,10 @@ const PITCH = PAGE_H + GAP;
 const PALM_MS = 400;
 /** Holding the pen still this long snaps the stroke to a shape. */
 const HOLD_MS = 550;
+/** A finger gesture this young when the pen lands was the hand arriving, not a deliberate pan. */
+const PALM_UNDO_MS = 700;
+/** Pointer ids at or below this are strokes driven from touch events (see `stylusTouch`). */
+const TOUCH_ID = -1000;
 const HOLD_RADIUS = 8; // screen px the pen may drift and still count as "still"
 const ERASER_RADIUS = 10; // screen px
 const HANDLE_RADIUS = 18; // screen px, touch target of a selection corner
@@ -103,6 +107,7 @@ export class NotebookCanvas {
   private redoStack: Op[] = [];
   private touches = new Map<number, XY>(); // fingers taking part in pan/zoom
   private lastPen = -Infinity;
+  private gesture: { view: View; t: number } | null = null; // where the view was when fingers arrived
   private velocity: XY = [0, 0]; // px per ms, for the glide after a flick
   private lastMove = 0;
   private glideFrame = 0;
@@ -132,6 +137,9 @@ export class NotebookCanvas {
     host.addEventListener("wheel", this.wheel, { passive: false });
     host.addEventListener("contextmenu", this.prevent);
     host.addEventListener("gesturestart", this.prevent); // Safari's own pinch
+    for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"] as const) {
+      host.addEventListener(type, this.stylusTouch, { passive: false });
+    }
     window.addEventListener("resize", this.resize);
     this.sizeCanvases();
     loadPages(notebookId).then(
@@ -159,6 +167,9 @@ export class NotebookCanvas {
     h.removeEventListener("wheel", this.wheel);
     h.removeEventListener("contextmenu", this.prevent);
     h.removeEventListener("gesturestart", this.prevent);
+    for (const type of ["touchstart", "touchmove", "touchend", "touchcancel"] as const) {
+      h.removeEventListener(type, this.stylusTouch);
+    }
     window.removeEventListener("resize", this.resize);
   }
 
@@ -523,15 +534,22 @@ export class NotebookCanvas {
       // Palm rejection: a touch landing while the pen works, or right after, is ignored
       // (it never enters `touches`, so its moves do nothing).
       if (this.current || performance.now() - this.lastPen < PALM_MS) return;
+      if (!this.touches.size) this.gesture = { view: this.view, t: performance.now() };
       this.touches.set(e.pointerId, this.pos(e));
       this.stopGlide();
       return;
     }
     if (e.button !== 0 || !this.pages.length) return;
+    // This contact is already being drawn from touch events: ignore its late pointer events.
+    if (this.current && this.current.id <= TOUCH_ID && e.pointerId > TOUCH_ID) return;
     // A pen cannot land twice without lifting. If the previous lift never reached us
     // (iOS can swallow it), finish that stroke now instead of ignoring this new one.
     if (this.current) this.finish(this.current, null);
-    // The palm often lands before the tip: drop whatever gesture it started.
+    // The palm often lands before the tip: drop whatever gesture it started, and put
+    // the page back where it was so the hand arriving does not shift it under the pen.
+    if (this.touches.size && this.gesture && performance.now() - this.gesture.t < PALM_UNDO_MS) {
+      this.applyView(this.gesture.view);
+    }
     this.touches.clear();
     this.stopGlide();
     this.lastPen = performance.now();
@@ -754,6 +772,36 @@ export class NotebookCanvas {
     }
     this.drawOverlay();
   }
+
+  /**
+   * Safari does not always give the Pencil its pointer events: with a hand already
+   * resting on the glass, the first stroke's pointerdown can be withheld, or the
+   * stroke cancelled part-way, and nothing more arrives until the pen lifts. Touch
+   * events keep coming and say which touch is the stylus, so they are the safety
+   * net: whenever the stylus is on the glass and no stroke is running, draw from them.
+   *
+   * Calling preventDefault here also stops Safari's own long-press and scroll
+   * handling from taking the touches away.
+   */
+  private stylusTouch = (e: TouchEvent) => {
+    e.preventDefault();
+    for (const touch of Array.from(e.changedTouches)) {
+      if ((touch as Touch & { touchType?: string }).touchType !== "stylus") continue;
+      const id = TOUCH_ID - touch.identifier;
+      const as = (type: string) =>
+        ({
+          type, pointerType: "pen", pointerId: id, button: 0,
+          clientX: touch.clientX, clientY: touch.clientY, pressure: touch.force || 0.5,
+        }) as unknown as PointerEvent;
+      if (e.type === "touchstart" || e.type === "touchmove") {
+        // Pointer events fire before touch events, so a stroke would already exist.
+        if (!this.current) this.down(as("pointerdown"));
+        else if (this.current.id === id && e.type === "touchmove") this.move(as("pointermove"));
+      } else if (this.current?.id === id) {
+        this.up(as(e.type === "touchend" ? "pointerup" : "pointercancel"));
+      }
+    }
+  };
 
   private wheel = (e: WheelEvent) => {
     e.preventDefault();

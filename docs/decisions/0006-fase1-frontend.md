@@ -35,6 +35,8 @@ La primera versión tenía un canvas por página, escalado con una transformaci�
 
 **Despliegue: archivos estáticos en Cloudflare.** Solo se sube `dist/`; no hay código de servidor. Se eligió una dirección fija porque IndexedDB está ligado al origen: si la dirección cambia, la app instalada empieza vacía.
 
+**El Pencil tiene dos fuentes de eventos.** La principal son los eventos de puntero. Safari no siempre se los entrega al lápiz: con la mano ya apoyada, el primer trazo podía no arrancar hasta levantar y volver a bajar. Los eventos táctiles sí siguen llegando e indican cuál toque es el lápiz (`touchType === "stylus"`), así que sirven de red de seguridad: si el lápiz está sobre el vidrio y no hay trazo en curso, se dibuja desde ellos. Además se llama a `preventDefault` en los eventos táctiles del lienzo para que Safari no se quede con los toques (pulsación larga, desplazamiento).
+
 ## Limitaciones conocidas
 
 - **El doble toque del Apple Pencil no existe para la web.** Safari no lo expone. El borrador es de un solo uso, desde la barra (SPEC §6.1). Un doble toque con el dedo se probó como sustituto y se retiró: la mano apoyada lo activaba por accidente.

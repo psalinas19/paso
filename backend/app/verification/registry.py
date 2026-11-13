@@ -100,6 +100,7 @@ def select(step: Step, ctx: VerifyContext) -> Strategy:
 def load_builtin_strategies() -> None:
     """Import the strategy modules so their register() calls run."""
     from app.verification.strategies import (  # noqa: F401
+        arithmetic,
         equation,
         expression,
         given,
