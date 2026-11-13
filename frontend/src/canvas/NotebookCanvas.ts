@@ -21,8 +21,6 @@ export interface CanvasEvents {
   onState(state: { canUndo: boolean; canRedo: boolean; hasSelection: boolean }): void;
   /** The one-shot eraser removed something and the pen lifted: go back to the pen. */
   onEraseEnd(): void;
-  /** Two quick finger taps: the on-screen stand-in for the Pencil's double tap. */
-  onDoubleTap(): void;
 }
 
 const GAP = 16; // between pages, in page units
@@ -117,8 +115,6 @@ export class NotebookCanvas {
   private renderTimer = 0;
   private renderFallback = 0;
   private renderCost = 0; // ms the last full render took
-  private taps = new Map<number, { at: XY; t: number }>(); // finger touches that may still be taps
-  private lastTap: { at: XY; t: number } | null = null;
 
   constructor(
     private host: HTMLDivElement,
@@ -528,11 +524,13 @@ export class NotebookCanvas {
       // (it never enters `touches`, so its moves do nothing).
       if (this.current || performance.now() - this.lastPen < PALM_MS) return;
       this.touches.set(e.pointerId, this.pos(e));
-      this.taps.set(e.pointerId, { at: this.pos(e), t: performance.now() });
       this.stopGlide();
       return;
     }
-    if (e.button !== 0 || this.current || !this.pages.length) return;
+    if (e.button !== 0 || !this.pages.length) return;
+    // A pen cannot land twice without lifting. If the previous lift never reached us
+    // (iOS can swallow it), finish that stroke now instead of ignoring this new one.
+    if (this.current) this.finish(this.current, null);
     // The palm often lands before the tip: drop whatever gesture it started.
     this.touches.clear();
     this.stopGlide();
@@ -678,7 +676,6 @@ export class NotebookCanvas {
   private up = (e: PointerEvent) => {
     if (e.pointerType === "touch") {
       if (!this.touches.delete(e.pointerId)) return;
-      this.tapEnded(e);
       const flick = this.touches.size === 0 && e.type === "pointerup" && performance.now() - this.lastMove < 80;
       if (flick && Math.hypot(...this.velocity) > 0.1) this.glide();
       else this.velocity = [0, 0];
@@ -687,15 +684,20 @@ export class NotebookCanvas {
     const c = this.current;
     if (!c || c.id !== e.pointerId) return;
     // pointercancel ends here too: keep what was done rather than drop it.
+    this.finish(c, e.type === "pointerup" ? e : null);
+  };
+
+  /** End the current stroke or gesture. `lift` is the pointerup that ended it, when there was one. */
+  private finish(c: Current, lift: PointerEvent | null) {
     clearTimeout(this.holdTimer);
     this.current = null;
     this.lastPen = performance.now();
 
     if (c.mode === "ink" && (this.tool.kind === "pen" || this.tool.kind === "highlighter")) {
-      if (!c.shape && e.type === "pointerup") {
+      if (!c.shape && lift) {
         // The lift position only arrives with pointerup. Without it a fast stroke ends
         // short of where the pen left the glass. Pressure is 0 on lift, so reuse the last one.
-        const [x, y] = this.local(e, c.page);
+        const [x, y] = this.local(lift, c.page);
         const last = c.points[c.points.length - 1];
         if (x !== last[0] || y !== last[1]) c.points.push([x, y, last[2]]);
       }
@@ -751,19 +753,6 @@ export class NotebookCanvas {
       }
     }
     this.drawOverlay();
-  };
-
-  /** A short, still, single-finger touch is a tap; two of them close together are a double tap. */
-  private tapEnded(e: PointerEvent) {
-    const start = this.taps.get(e.pointerId);
-    this.taps.delete(e.pointerId);
-    const at = this.pos(e), now = performance.now();
-    const far = (a: XY, b: XY, px: number) => Math.hypot(a[0] - b[0], a[1] - b[1]) > px;
-    if (!start || e.type !== "pointerup" || this.touches.size || now - start.t > 250 || far(start.at, at, 10)) return;
-    if (this.lastTap && now - this.lastTap.t < 350 && !far(this.lastTap.at, at, 40)) {
-      this.lastTap = null;
-      this.events.onDoubleTap();
-    } else this.lastTap = { at, t: now };
   }
 
   private wheel = (e: WheelEvent) => {

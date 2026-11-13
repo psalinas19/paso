@@ -45,18 +45,33 @@ export interface BackendConfig {
 
 const KEY = "paso:backend";
 
+/**
+ * Reduce whatever was pasted to the server's address alone. People paste the
+ * link they just tested ("…/api/health"), leave a trailing slash, or drop the
+ * "https://"; any of those used to end in a puzzling "Not Found".
+ */
+export function backendOrigin(input: string): string {
+  const text = input.trim();
+  if (!text) return "";
+  try {
+    return new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`).origin;
+  } catch {
+    return text;
+  }
+}
+
 export function loadConfig(): BackendConfig {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}");
-    return { url: String(saved.url ?? ""), token: String(saved.token ?? "") };
+    // Normalised on read too, so an address saved by an older version just works.
+    return { url: backendOrigin(String(saved.url ?? "")), token: String(saved.token ?? "").trim() };
   } catch {
     return { url: "", token: "" };
   }
 }
 
 export function saveConfig(config: BackendConfig) {
-  // Tolerate a pasted trailing slash or spaces: the tunnel address changes often.
-  localStorage.setItem(KEY, JSON.stringify({ url: config.url.trim().replace(/\/+$/, ""), token: config.token.trim() }));
+  localStorage.setItem(KEY, JSON.stringify({ url: backendOrigin(config.url), token: config.token.trim() }));
 }
 
 /** Below 0.7 the reading is doubtful and the panel says so (SPEC 6.2). */

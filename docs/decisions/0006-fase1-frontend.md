@@ -37,7 +37,7 @@ La primera versión tenía un canvas por página, escalado con una transformaci�
 
 ## Limitaciones conocidas
 
-- **El doble toque del Apple Pencil no existe para la web.** Safari no lo expone. El borrador es de un solo uso, desde la barra o con doble toque de un dedo (SPEC §6.1).
+- **El doble toque del Apple Pencil no existe para la web.** Safari no lo expone. El borrador es de un solo uso, desde la barra (SPEC §6.1). Un doble toque con el dedo se probó como sustituto y se retiró: la mano apoyada lo activaba por accidente.
 - El historial de deshacer vive en memoria: se pierde al cerrar el cuaderno o reordenar páginas.
 - Una selección no se puede mover a otra página.
 - Los diálogos de renombrar y confirmar borrado son los nativos del navegador.

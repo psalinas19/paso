@@ -42,8 +42,6 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
       onError,
       onState: setState,
       onEraseEnd: () => setActive(writingTool.current),
-      // Double tap with a finger: eraser on, or back to writing if it was already on.
-      onDoubleTap: () => setActive((now) => (now === "eraser" ? writingTool.current : "eraser")),
     });
     canvas.current = c;
     return () => c.destroy();
