@@ -97,8 +97,36 @@ function recognizeArrow(pts: XY[]): Shape | null {
   return { kind: "arrow", a, b: snapLineEnd(a, b) };
 }
 
-export function recognizeShape(points: ArrayLike<ArrayLike<number>>): Shape | null {
-  const pts: XY[] = Array.from({ length: points.length }, (_, i) => [points[i][0], points[i][1]]);
+/**
+ * The stroke as it was meant, without what a hand adds while "holding still".
+ *
+ * Nobody holds a pen perfectly still: during the pause that asks for a shape the
+ * tip trembles, and the Pencil reports every tremor, hundreds of samples piled on
+ * one spot. Counted as path they made a line look far longer than its two ends
+ * are apart, so it was not recognised as a line; on a real iPad that is every
+ * line. The pile at the end is cut back to one point, and samples closer
+ * together than a hair are skipped everywhere.
+ */
+export function withoutDwell(pts: XY[], reach = 4): XY[] {
+  if (pts.length < 3) return pts;
+  const mean = (some: XY[]): XY => [some.reduce((s, p) => s + p[0], 0) / some.length, some.reduce((s, p) => s + p[1], 0) / some.length];
+  // Where the pen came to rest: the middle of the last samples, not the last twitch.
+  const settled = mean(pts.slice(-Math.min(12, pts.length)));
+  let last = pts.length - 1;
+  while (last > 0 && dist(pts[last - 1], settled) <= reach) last--;
+  const rest = mean(pts.slice(last));
+  const out: XY[] = [pts[0]];
+  for (let i = 1; i < last; i++) if (dist(pts[i], out[out.length - 1]) >= 1) out.push(pts[i]);
+  out.push(rest);
+  return out;
+}
+
+/**
+ * `still` is how far the pen may have wandered during the pause that asked for
+ * the shape, in the units of the points.
+ */
+export function recognizeShape(points: ArrayLike<ArrayLike<number>>, still = 4): Shape | null {
+  const pts = withoutDwell(Array.from({ length: points.length }, (_, i): XY => [points[i][0], points[i][1]]), still);
   if (pts.length < 2) return null;
   let length = 0;
   for (let i = 1; i < pts.length; i++) length += dist(pts[i - 1], pts[i]);

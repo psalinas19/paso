@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { fractionInside, hitsStroke, type XY } from "./geometry";
-import { adjustShape, recognizeShape, shapePoints, snapLineEnd } from "./shapes";
+import { adjustShape, recognizeShape, shapePoints, snapLineEnd, withoutDwell } from "./shapes";
 
 // Deterministic hand wobble.
 const wobble = (i: number, amp: number) => Math.sin(i * 12.9898) * amp;
@@ -130,4 +130,38 @@ test("letters with a straight stroke are not arrows", () => {
   expect(stroke(p)?.kind).not.toBe("arrow");
   // A long line whose end merely wobbles as the pen stops is still a line.
   expect(stroke([[100, 200], [260, 200], [258, 203]])?.kind).toBe("line");
+});
+
+/** What a hand does while "holding still": hundreds of samples trembling around one spot. */
+const trembling = (at: XY, amp: number, n = 150): XY[] =>
+  Array.from({ length: n }, (_, i) => [at[0] + wobble(i * 3, amp), at[1] + wobble(i * 3 + 1, amp)]);
+
+test("a hand trembling while it holds the pen still does not spoil the shape", () => {
+  // The failure on the iPad: every line, since nobody holds a pen perfectly still.
+  // 6.5 page units is what the canvas allows the pen to wander at its usual zoom.
+  const still = 6.5;
+  for (const amp of [0.5, 1.5, 3]) {
+    const short = [...along([[100, 100], [160, 103]], 2, 0.4).slice(0, -1), ...trembling([160, 103], amp)];
+    expect(recognizeShape(short, still)?.kind, `short line, tremor ${amp}`).toBe("line");
+    const long = [...along([[100, 100], [400, 112]], 3, 0.6).slice(0, -1), ...trembling([400, 112], amp)];
+    expect(recognizeShape(long, still)?.kind, `long line, tremor ${amp}`).toBe("line");
+  }
+  const tri: XY[] = [[100, 300], [200, 120], [300, 300], [100, 300]];
+  expect(recognizeShape([...along(tri, 5, 1.2), ...trembling([100, 300], 1.5)], still)?.kind).toBe("polygon");
+  const arrow = along([[100, 200], [260, 200], [240, 188]], 3, 0.8).slice(0, -1);
+  expect(recognizeShape([...arrow, ...trembling([240, 188], 1.5)], still)?.kind).toBe("arrow");
+  const circle: XY[] = Array.from({ length: 80 }, (_, i) => [300 + 50 * Math.cos((i / 78) * 2 * Math.PI), 300 + 48 * Math.sin((i / 78) * 2 * Math.PI)]);
+  expect(recognizeShape([...circle, ...trembling(circle[circle.length - 1], 1.5)], still)?.kind).toBe("ellipse");
+});
+
+test("the pause is cut back to where the pen rested; the stroke itself is kept", () => {
+  const stroke = along([[0, 0], [100, 0]], 2, 0);
+  const cleaned = withoutDwell([...stroke.slice(0, -1), ...trembling([100, 0], 1.5)]);
+  expect(cleaned.length).toBeLessThan(stroke.length + 2);
+  const end = cleaned[cleaned.length - 1];
+  expect(Math.hypot(end[0] - 100, end[1])).toBeLessThan(1.5);
+  expect(cleaned[0]).toEqual([0, 0]);
+  // Handwriting written without any pause loses nothing but hair-width repeats.
+  const s: XY[] = Array.from({ length: 60 }, (_, i) => [100 + 30 * Math.sin(i / 9), 100 + i * 2]);
+  expect(withoutDwell(s).length).toBeGreaterThan(55);
 });

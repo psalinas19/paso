@@ -35,8 +35,51 @@ export function densify(points: Point[], step = 3): Point[] {
   return out;
 }
 
+/**
+ * Drop the samples that make a stroke double back on itself for an instant.
+ *
+ * A pen moving fast sometimes reports a sample that lies *behind* the previous
+ * one (browsers batch pen samples, and a batch can overlap the one before). The
+ * stroke then goes forward, a hair back, and forward again, and the outline
+ * shows it as a notch: the line looks fractured. A sample is dropped when it
+ * retreats along the direction of travel and the next one carries on forward;
+ * a real change of direction keeps going the new way, so it is left alone.
+ */
+export function withoutBacktracks(points: Point[]): Point[] {
+  if (points.length < 3) return points;
+  const out: Point[] = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i], last = out[out.length - 1];
+    if (p[0] === last[0] && p[1] === last[1]) continue; // the same spot again
+    const before = out[out.length - 2], next = points[i + 1];
+    if (before && next) {
+      const dx = last[0] - before[0], dy = last[1] - before[1]; // direction of travel
+      const back = (p[0] - last[0]) * dx + (p[1] - last[1]) * dy;
+      const onward = (next[0] - p[0]) * dx + (next[1] - p[1]) * dy;
+      // Went back, then on again past where it had been: a stray sample.
+      if (back < 0 && onward > 0 && (next[0] - last[0]) * dx + (next[1] - last[1]) * dy > 0) continue;
+    }
+    out.push(p);
+  }
+  return out.length > 1 ? out : points;
+}
+
+/**
+ * Pressure as the pen reports it is noisy, most of all on a fast stroke, and
+ * every jump in it becomes a bulge in the line. A short running average keeps
+ * the slow changes (pressing harder through a stroke) and drops the jitter.
+ */
+export function steadyPressure(points: Point[]): Point[] {
+  if (points.length < 3) return points;
+  let level = points[0][2];
+  return points.map((p): Point => {
+    level += (p[2] - level) * 0.25;
+    return [p[0], p[1], level];
+  });
+}
+
 export function outlinePoints(points: Point[], size: number, done = true, thinning = 0.3): number[][] {
-  return getStroke(densify(points), {
+  return getStroke(densify(steadyPressure(withoutBacktracks(points))), {
     size,
     thinning,
     smoothing: 0.6,

@@ -31,12 +31,16 @@ const PITCH = PAGE_H + GAP;
 /** A touch this soon after the pen is a resting palm, not a gesture. */
 const PALM_MS = 400;
 /** Holding the pen still this long snaps the stroke to a shape. */
-const HOLD_MS = 550;
+const HOLD_MS = 500;
 /** A finger gesture this young when the pen lands was the hand arriving, not a deliberate pan. */
 const PALM_UNDO_MS = 700;
+/** Pointer events silent this long while the Pencil still moves: they are not coming. */
+const POINTER_STALL_MS = 60;
 /** Pointer ids at or below this are strokes driven from touch events (see `stylusTouch`). */
 const TOUCH_ID = -1000;
-const HOLD_RADIUS = 8; // screen px the pen may drift and still count as "still"
+// Screen px the pen may wander and still count as "still". A hand at rest trembles
+// a millimetre or so, and each time it left a tighter circle the wait started over.
+const HOLD_RADIUS = 12;
 const ERASER_RADIUS = 10; // screen px
 const HANDLE_RADIUS = 18; // screen px, touch target of a selection corner
 const SELECT_COLOR = "#1d4ed8";
@@ -67,7 +71,7 @@ interface Selection {
 }
 
 type Current =
-  | { mode: "ink"; id: number; page: number; points: Point[]; shape: Shape | null; base: Shape | null; snapFrom: XY; holdAnchor: XY }
+  | { mode: "ink"; id: number; page: number; points: Point[]; shape: Shape | null; base: Shape | null; snapFrom: XY; holdAnchor: XY; time: number }
   | { mode: "erase"; id: number; last: XY; at: XY; removed: Stroke[] }
   | { mode: "lasso"; id: number; page: number; points: XY[] }
   | { mode: "move" | "scale"; id: number; start: XY; now: XY; anchor: XY; axes: Axes };
@@ -121,6 +125,8 @@ export class NotebookCanvas {
   private lastMove = 0;
   private glideFrame = 0;
   private holdTimer = 0;
+  /** Identifier of the Pencil's touch while it is on the glass, as touch events report it. */
+  private stylusId: number | null = null;
   private disposed = false;
   private ictx: CanvasRenderingContext2D;
   private octx: CanvasRenderingContext2D;
@@ -651,7 +657,7 @@ export class NotebookCanvas {
       }
     } else {
       const p = this.local(e, page);
-      this.current = { mode: "ink", id, page, points: [[p[0], p[1], e.pressure || 0.5]], shape: null, base: null, snapFrom: p, holdAnchor: this.pos(e) };
+      this.current = { mode: "ink", id, page, points: [[p[0], p[1], e.pressure || 0.5]], shape: null, base: null, snapFrom: p, holdAnchor: this.pos(e), time: e.timeStamp || 0 };
       this.armHold();
     }
     try {
@@ -687,7 +693,8 @@ export class NotebookCanvas {
   private snap = () => {
     const c = this.current;
     if (c?.mode !== "ink" || c.shape) return;
-    const shape = recognizeShape(c.points);
+    // The pause allowed the pen to wander HOLD_RADIUS on screen; say so in page units.
+    const shape = recognizeShape(c.points, HOLD_RADIUS / this.view.s);
     if (!shape) return;
     const last = c.points[c.points.length - 1];
     c.shape = c.base = shape;
@@ -710,7 +717,13 @@ export class NotebookCanvas {
       // samples in between, predicted ones cut perceived latency and are never stored.
       const events = e.getCoalescedEvents?.() ?? [];
       const point = (ev: PointerEvent): Point => [...this.local(ev, c.page), ev.pressure || 0.5];
-      for (const ev of events.length ? events : [e]) c.points.push(point(ev));
+      for (const ev of events.length ? events : [e]) {
+        // Batches of pen samples can overlap: one that is older than a sample
+        // already taken would make the line step back on itself and look broken.
+        if (ev.timeStamp && ev.timeStamp < c.time) continue;
+        if (ev.timeStamp) c.time = ev.timeStamp;
+        c.points.push(point(ev));
+      }
       const at = this.pos(e);
       if (Math.hypot(at[0] - c.holdAnchor[0], at[1] - c.holdAnchor[1]) > HOLD_RADIUS) {
         c.holdAnchor = at;
@@ -787,6 +800,13 @@ export class NotebookCanvas {
     }
     const c = this.current;
     if (!c || c.id !== e.pointerId) return;
+    if (e.type === "pointercancel" && this.stylusId !== null && e.pointerId > TOUCH_ID) {
+      // Safari took the pointer away but the Pencil is still on the glass. Ending
+      // here and starting again from touch events would cut one line in two:
+      // carry the same stroke on from the touch events instead.
+      c.id = TOUCH_ID - this.stylusId;
+      return;
+    }
     // pointercancel ends here too: keep what was done rather than drop it.
     this.finish(c, e.type === "pointerup" ? e : null);
   };
@@ -904,11 +924,19 @@ export class NotebookCanvas {
           clientX: touch.clientX, clientY: touch.clientY, pressure: touch.force || 0.5,
         }) as unknown as PointerEvent;
       if (e.type === "touchstart" || e.type === "touchmove") {
+        this.stylusId = touch.identifier;
         // Pointer events fire before touch events, so a stroke would already exist.
         if (!this.current) this.down(as("pointerdown"));
-        else if (this.current.id === id && e.type === "touchmove") this.move(as("pointermove"));
-      } else if (this.current?.id === id) {
-        this.up(as(e.type === "touchend" ? "pointerup" : "pointercancel"));
+        else if (e.type === "touchmove") {
+          // The stroke is being drawn from pointer events and they have gone quiet
+          // while the Pencil keeps moving: take the same stroke over from here.
+          const stalled = this.current.id > TOUCH_ID && performance.now() - this.lastPen > POINTER_STALL_MS;
+          if (stalled) this.current.id = id;
+          if (this.current.id === id) this.move(as("pointermove"));
+        }
+      } else {
+        this.stylusId = null;
+        if (this.current?.id === id) this.up(as(e.type === "touchend" ? "pointerup" : "pointercancel"));
       }
     }
   };
