@@ -60,18 +60,23 @@ export function backendOrigin(input: string): string {
   }
 }
 
+/** Tolerate a token pasted as the whole line of the .env file, or wrapped in quotes or spaces. */
+export function cleanToken(input: string): string {
+  return input.trim().replace(/^APP_TOKEN\s*=\s*/i, "").replace(/^["']|["']$/g, "").trim();
+}
+
 export function loadConfig(): BackendConfig {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}");
     // Normalised on read too, so an address saved by an older version just works.
-    return { url: backendOrigin(String(saved.url ?? "")), token: String(saved.token ?? "").trim() };
+    return { url: backendOrigin(String(saved.url ?? "")), token: cleanToken(String(saved.token ?? "")) };
   } catch {
     return { url: "", token: "" };
   }
 }
 
 export function saveConfig(config: BackendConfig) {
-  localStorage.setItem(KEY, JSON.stringify({ url: backendOrigin(config.url), token: config.token.trim() }));
+  localStorage.setItem(KEY, JSON.stringify({ url: backendOrigin(config.url), token: cleanToken(config.token) }));
 }
 
 /** Below 0.7 the reading is doubtful and the panel says so (SPEC 6.2). */

@@ -125,7 +125,7 @@ La libreta le manda al backend la selección del lazo y muestra cómo se leyó y
 2. **Token de la app.** Genera uno y pégalo en `backend\.env` como `APP_TOKEN`:
 
 ```powershell
-py -3.12 -c "import secrets; print(secrets.token_urlsafe(32))"
+py -3.12 -c "import secrets; print(secrets.token_hex(24))"
 ```
 
 3. **Túnel.** Instala cloudflared:
