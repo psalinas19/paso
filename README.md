@@ -237,6 +237,18 @@ py -3.12 -m uv run python -m app.case confirm ed-01
 
 `confirm` revisa que todo esté completo, te muestra qué dice hoy el verificador de cada paso y solo entonces lo mete al banco. Si corregiste pasos desde la libreta, el borrador ya trae tu versión. Detalles en [backend/eval/README.md](backend/eval/README.md).
 
+### Preguntarle al tutor
+
+Al final del panel de una revisión hay un chat. Sabe qué escribiste, cómo se leyó, qué dijo el verificador y qué ayuda ya viste. La respuesta aparece mientras se escribe.
+
+- Lo que responde es del modelo y **puede equivocarse**: es lo único de la app que no se comprueba con matemáticas.
+- La conversación se guarda con la revisión y se puede releer sin conexión.
+- Opcional: en `backend\.env`, `ANTHROPIC_MODEL_CHAT` usa un modelo más barato solo para el chat.
+
+### Sin conexión
+
+Si tocas **Revisar** sin internet (o con el backend apagado), la selección se guarda en una cola y no se pierde. Cuando vuelva la conexión la app te avisa; para enviarlas, **⋯ → Revisiones en espera**. No se envían solas porque cada una cuesta.
+
 ### Si tarda mucho
 
 Debajo del costo, el panel dice en qué se fue la espera: «Tardó 9 s: 7 s el modelo, 1 s comprobar, 1 s la conexión».
@@ -275,4 +287,6 @@ De la Fase 2:
 
 Hay además un plan pendiente de tu aprobación sobre gestos de la libreta y la ruta a app nativa: [docs/plan-mecanicas-y-app-nativa.md](docs/plan-mecanicas-y-app-nativa.md).
 
-Después, Fases 3 a 5 (chat, cola sin conexión, banco de errores, respaldo automático, despliegue del backend) según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.
+**Fase 3 construida** (explicación, solución, chat y cola sin conexión), pendiente de probar con el modelo real.
+
+Después, Fases 4 y 5 (chat, cola sin conexión, banco de errores, respaldo automático, despliegue del backend) según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.

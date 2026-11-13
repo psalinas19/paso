@@ -27,7 +27,7 @@ const review: Review = {
   budget_usd: 20,
 };
 
-const actions = { onCorrect: async () => {}, onHint: async () => {}, onExplain: async () => {}, onSolve: async () => {} };
+const actions = { onCorrect: async () => {}, onHint: async () => {}, onExplain: async () => {}, onSolve: async () => {}, onChat: async () => {} };
 const text = (r: Review, withActions = true) =>
   renderToStaticMarkup(<Result review={r} actions={withActions ? actions : undefined} />).replace(/<[^>]+>/g, " ");
 
@@ -222,4 +222,29 @@ test("the panel says where the wait went", () => {
   // A later free answer keeps the last real measurement instead of erasing it.
   const merged = mergeReview({ ...review, timing }, { ...response, recognition: review.recognition, verification: review.verification, cost_usd: 0, usage: { month_spend_usd: 0, budget_usd: 20, checks_this_month: 1 }, id: "abc" });
   expect(merged.timing).toEqual(timing);
+});
+
+test("the chat offers questions that fit the review, and shows the conversation", () => {
+  const fresh = text(review);
+  expect(fresh).toContain("Pregúntale al tutor");
+  expect(fresh).toContain("¿Por qué está mal el paso 2?"); // the step the verifier marked
+  expect(fresh).toContain("puede equivocarse");
+
+  const talked: Review = {
+    ...review,
+    chat: [
+      { role: "user", content: "¿Por qué?" },
+      { role: "assistant", content: "Porque **dividiste mal**: $6 / 2 = 3$.\n\n- revisa el paso 2" },
+    ],
+  };
+  const html = renderToStaticMarkup(<Result review={talked} actions={actions} />);
+  expect(html).toContain("<strong>");
+  expect(html).toContain("katex");
+  expect(html).toContain("<li><span>revisa el paso 2</span></li>");
+  expect(html).not.toContain("¿Qué regla debí aplicar ahí?"); // suggestions only before the first question
+
+  // Without a backend the conversation is still readable, but there is no box to write in.
+  const offline = renderToStaticMarkup(<Result review={talked} />);
+  expect(offline).toContain("Lo que preguntaste");
+  expect(offline).not.toContain("<textarea");
 });

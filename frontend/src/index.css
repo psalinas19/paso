@@ -1015,3 +1015,125 @@ html:has(.library) body {
   gap: 8px;
   margin-top: 10px;
 }
+
+/* --- chat with the tutor -------------------------------------------------- */
+
+.chat {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid #edf0f5;
+}
+
+.chat h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.chat .talk {
+  margin: 10px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat .talk li {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+}
+
+.chat .talk li.user {
+  margin-left: 32px;
+  background: #1f2a44;
+  color: #fff;
+}
+
+.chat .talk li.assistant {
+  margin-right: 12px;
+  border: 1px dashed #b54708;
+  background: #fffaf2;
+}
+
+.chat .talk p,
+.markdown p {
+  margin: 0;
+}
+
+.markdown > * + * {
+  margin-top: 8px;
+}
+
+.markdown :is(ul, ol) {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.markdown h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.markdown code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #eef1f6;
+  font-size: 0.92em;
+}
+
+.chat .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.review .chat .chips button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #c7cedb;
+  border-radius: 999px;
+  background: #fff;
+  color: #1f2a44;
+  font-size: 14px;
+}
+
+.chat form {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-top: 10px;
+}
+
+.chat textarea {
+  flex: 1;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #c7cedb;
+  border-radius: 10px;
+  font: inherit;
+  /* 16px or Safari zooms the page when the field takes focus. */
+  font-size: 16px;
+  line-height: 1.35;
+  resize: none;
+}
+
+.history li.queued {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.history li.queued span {
+  flex: 1;
+}
+
+.banner button {
+  min-height: 32px;
+  margin-left: 4px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.2);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

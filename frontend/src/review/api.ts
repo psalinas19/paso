@@ -208,3 +208,86 @@ export function postExplain(config: BackendConfig, checkId: string): Promise<Che
 export function postSolve(config: BackendConfig, checkId: string): Promise<CheckResponse> {
   return call<CheckResponse>(config, `/api/checks/${encodeURIComponent(checkId)}/solve`, { method: "POST" });
 }
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** One server-sent event of the chat: a piece of the answer, the closing summary, or a failure. */
+export type ChatEvent =
+  | { event: "delta"; data: { text: string } }
+  | { event: "done"; data: { cost_usd: number; usage: UsageSummary } }
+  | { event: "error"; data: { detail: string } };
+
+/**
+ * Split what has arrived of an event stream into whole events and the
+ * unfinished remainder. Events end with a blank line; the network may cut the
+ * text anywhere, so the remainder is kept and parsed again with the next chunk.
+ */
+export function parseSse(buffer: string): { events: ChatEvent[]; rest: string } {
+  const blocks = buffer.split("\n\n");
+  const rest = blocks.pop() ?? "";
+  const events: ChatEvent[] = [];
+  for (const block of blocks) {
+    let event = "", data = "";
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event: ")) event = line.slice(7);
+      else if (line.startsWith("data: ")) data += line.slice(6);
+    }
+    if (!event || !data) continue;
+    try {
+      events.push({ event, data: JSON.parse(data) } as ChatEvent);
+    } catch {
+      // A malformed event is skipped rather than breaking the whole answer.
+    }
+  }
+  return { events, rest };
+}
+
+/**
+ * Ask the tutor about a review. `onText` is called with the answer so far each
+ * time more of it arrives; the promise resolves with the whole answer and what
+ * it cost once it is complete.
+ */
+export async function streamChat(
+  config: BackendConfig,
+  checkId: string,
+  message: string,
+  onText: (soFar: string) => void,
+): Promise<{ answer: string; cost_usd: number; usage: UsageSummary }> {
+  if (!config.url || !config.token) throw new Error("Falta configurar la dirección del backend y el token en Ajustes de revisión.");
+  if (!navigator.onLine) throw new Error("Sin conexión: el chat necesita internet.");
+  const body = new FormData();
+  body.append("message", message);
+  body.append("effort", SPEEDS.find((s) => s.id === config.speed)?.effort ?? "high");
+  let response: Response;
+  try {
+    response = await fetch(`${config.url}/api/checks/${encodeURIComponent(checkId)}/chat`, {
+      method: "POST",
+      body,
+      headers: { Authorization: `Bearer ${config.token}` },
+    });
+  } catch {
+    throw new Error("No se pudo conectar con el backend. ¿Está encendido y la dirección es la del túnel actual?");
+  }
+  if (!response.ok || !response.body) {
+    const detail = await response.json().then((b) => b.detail, () => null);
+    throw new Error(typeof detail === "string" ? detail : `El backend respondió con un error (${response.status}).`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "", answer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const parsed = parseSse(done ? buffer + "\n\n" : buffer);
+    buffer = parsed.rest;
+    for (const item of parsed.events) {
+      if (item.event === "delta") onText((answer += item.data.text));
+      else if (item.event === "error") throw new Error(item.data.detail);
+      else return { answer, ...item.data };
+    }
+    if (done) throw new Error("La respuesta se interrumpió antes de terminar. Pregunta de nuevo.");
+  }
+}

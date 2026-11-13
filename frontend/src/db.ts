@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { CheckResponse, Explanation, Hint, Solution } from "./review/api";
+import type { ChatMessage, CheckResponse, Explanation, Hint, Solution } from "./review/api";
 import type { Stroke } from "./strokes/format";
 
 export interface Semester {
@@ -54,12 +54,28 @@ export interface Review {
   /** Level-2 explanation and level-3 solution, once asked for. Cleared with the hint. */
   explanation?: Explanation | null;
   solution?: Solution | null;
+  /** The conversation with the tutor about this review, kept here to read it offline. */
+  chat?: ChatMessage[];
   /** Where the time of the last request went, in seconds; the rest of the wait was network. */
   timing?: { total: number; model: number; verify: number };
   /** Everything this review has cost so far: reading, corrections and hint. */
   cost_usd: number;
   month_spend_usd: number;
   budget_usd: number;
+}
+
+/** A review asked for with no connection, waiting for the user to send it (SPEC 6.9). */
+export interface QueuedReview {
+  id: string;
+  notebook_id: string;
+  page_id: string;
+  box: [number, number, number, number];
+  created_at: number;
+  /** Subject slug the backend will read it as. */
+  subject: string;
+  /** The selection as a PNG. Kept as bytes: a Blob does not survive every storage engine. */
+  image: ArrayBuffer;
+  strokes: Stroke[];
 }
 
 export const db = new Dexie("paso") as Dexie & {
@@ -69,6 +85,7 @@ export const db = new Dexie("paso") as Dexie & {
   pages: EntityTable<Page, "id">;
   strokes: EntityTable<Stroke, "id">;
   reviews: EntityTable<Review, "id">;
+  queue: EntityTable<QueuedReview, "id">;
 };
 
 // Schema changes go in a new .version(n) with an upgrade function; never edit this one.
@@ -84,6 +101,11 @@ db.version(1).stores({
 // v2 (phase 2): reviews. Only the new table is declared; the others carry over untouched.
 db.version(2).stores({
   reviews: "id, notebook_id, page_id, created_at",
+});
+
+// v3 (phase 3): reviews asked for offline, waiting to be sent.
+db.version(3).stores({
+  queue: "id, notebook_id, created_at",
 });
 
 /** Strokes of a page in drawing order. */

@@ -2,11 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db, type Review } from "../db";
 import { ExportDialog } from "../export/ExportDialog";
 import { useLiveQuery } from "dexie-react-hooks";
-import { loadConfig, postCheck, postCorrection, postExplain, postHint, postSolve, type CheckResponse } from "../review/api";
+import { loadConfig, postCheck, postCorrection, postExplain, postHint, postSolve, streamChat, type CheckResponse } from "../review/api";
+import { enqueue, sendQueued, toReview } from "../review/queue";
 import { MarkCard, type OpenMark } from "../review/MarkCard";
-import { placeSteps } from "../review/marks";
-import { boxOf } from "../strokes/geometry";
-import { mergeReview, timingOf } from "../review/merge";
+import { mergeReview } from "../review/merge";
 import { ReviewPanel, type ReviewState } from "../review/ReviewPanel";
 import { SettingsDialog } from "../review/SettingsDialog";
 import { deletePage, movePage } from "../library/actions";
@@ -49,6 +48,15 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   pinnedRef.current = pinned;
   // Every review of this notebook: the canvas draws their marks beside the ink.
   const reviews = useLiveQuery(() => db.reviews.where("notebook_id").equals(notebookId).toArray(), [notebookId]);
+  // Reviews asked for offline and still waiting to be sent.
+  const waiting = useLiveQuery(() => db.queue.where("notebook_id").equals(notebookId).count(), [notebookId]) ?? 0;
+  const [backOnline, setBackOnline] = useState(false);
+  useEffect(() => {
+    // The connection is back: say so, but send nothing. Each review costs money (SPEC 6.9).
+    const online = () => setBackOnline(true);
+    window.addEventListener("online", online);
+    return () => window.removeEventListener("online", online);
+  }, []);
   // What the one-shot eraser returns to.
   const writingTool = useRef<"pen" | "highlighter">(prefs.active);
 
@@ -99,34 +107,29 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
     const snapshot = canvas.current?.selectionSnapshot();
     if (!snapshot) return;
     setPanel({ kind: "loading", since: Date.now() });
+    const selection = { notebookId, pageId: snapshot.pageId, box: snapshot.box, strokes: snapshot.strokes };
+    // The subject of the notebook decides notation and which checks apply.
+    const notebook = await db.notebooks.get(notebookId);
+    const subject = notebook && (await db.subjects.get(notebook.subject_id));
+    const slug = !subject || subject.template === "generic" ? "general" : subject.template;
+    const image = await snapshot.image;
+    const park = async (reason: string) => {
+      await enqueue(selection, slug, image);
+      setPanel({ kind: "queued", reason, pending: await db.queue.where("notebook_id").equals(notebookId).count() });
+    };
     try {
-      // The subject of the notebook decides notation and which checks apply.
-      const notebook = await db.notebooks.get(notebookId);
-      const subject = notebook && (await db.subjects.get(notebook.subject_id));
-      const slug = !subject || subject.template === "generic" ? "general" : subject.template;
+      // No connection: keep it for later instead of failing (SPEC 6.9).
+      if (!navigator.onLine) return await park("No hay conexión.");
       const started = performance.now();
-      const result = await postCheck(loadConfig(), await snapshot.image, slug, snapshot.strokes);
-      const inked = snapshot.strokes.map((s) => ({ id: s.id, box: boxOf(s.points, s.size / 2) }));
-      const saved: Review = {
-        id: result.id,
-        notebook_id: notebookId,
-        page_id: snapshot.pageId,
-        box: snapshot.box,
-        stroke_ids: inked.map((s) => s.id),
-        // Only when every step can be told apart on the page; otherwise the review gets one badge.
-        step_strokes: placeSteps(result.recognition.steps.map((s) => s.id), inked),
-        created_at: Date.now(),
-        recognition: result.recognition,
-        verification: result.verification,
-        cost_usd: result.cost_usd,
-        timing: timingOf(result, (performance.now() - started) / 1000),
-        month_spend_usd: result.usage.month_spend_usd,
-        budget_usd: result.usage.budget_usd,
-      };
+      const result = await postCheck(loadConfig(), image, slug, snapshot.strokes);
+      const saved = toReview(result, selection, (performance.now() - started) / 1000);
       await db.reviews.put(saved); // kept on the iPad: readable later without connection
       setPanel({ kind: "result", review: saved });
     } catch (error) {
-      setPanel({ kind: "error", message: (error as Error).message });
+      const message = (error as Error).message;
+      // The backend could not be reached at all: nothing was spent, so the request is worth keeping.
+      if (message.startsWith("No se pudo conectar") || message.startsWith("Sin conexión")) await park("No se pudo conectar con el backend.");
+      else setPanel({ kind: "error", message });
     }
   };
   /** Apply the backend's answer to the review on screen and to its copy on the iPad. */
@@ -147,6 +150,22 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
     onHint: () => update((r) => postHint(loadConfig(), r.id)),
     onExplain: () => update((r) => postExplain(loadConfig(), r.id)),
     onSolve: () => update((r) => postSolve(loadConfig(), r.id)),
+    onChat: async (message: string, onText: (soFar: string) => void) => {
+      if (panel?.kind !== "result") return;
+      const asked = panel.review;
+      const reply = await streamChat(loadConfig(), asked.id, message, onText);
+      // Read again: the review may have gained a hint or a correction meanwhile.
+      const current = (await db.reviews.get(asked.id)) ?? asked;
+      const next: Review = {
+        ...current,
+        chat: [...(current.chat ?? []), { role: "user", content: message }, { role: "assistant", content: reply.answer }],
+        cost_usd: current.cost_usd + reply.cost_usd,
+        month_spend_usd: reply.usage.month_spend_usd,
+        budget_usd: reply.usage.budget_usd,
+      };
+      await db.reviews.put(next);
+      setPanel((now) => (now?.kind === "result" && now.review.id === next.id ? { kind: "result", review: next } : now));
+    },
   };
   const failed = (what: string) => () => onError(`No se pudo ${what}.`);
   /** Run a command on the page at the centre of the screen, then rebuild if it changed the pages. */
@@ -158,6 +177,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
     { label: "Páginas…", run: () => setPagesOpen(true) },
     { label: "Exportar…", run: () => setExporting(true) },
     { label: "Revisiones guardadas", run: () => setPanel({ kind: "history" }) },
+    { label: waiting ? `Revisiones en espera (${waiting})` : "Revisiones en espera", run: () => setPanel({ kind: "queue" }) },
     { label: "Ajustes de revisión…", run: () => setSettings(true) },
     {
       label: gestures ? "Gestos de deshacer: activados (tocar para apagar)" : "Gestos de deshacer: apagados (tocar para activar)",
@@ -235,6 +255,13 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
           onClose={() => setCard(null)}
         />
       )}
+      {backOnline && waiting > 0 && (
+        <div className="banner" role="status">
+          Volvió la conexión y hay {waiting === 1 ? "una revisión" : `${waiting} revisiones`} en espera.{" "}
+          <button type="button" onClick={() => { setPanel({ kind: "queue" }); setBackOnline(false); }}>Ver</button>{" "}
+          <button type="button" aria-label="Cerrar aviso" onClick={() => setBackOnline(false)}>✕</button>
+        </div>
+      )}
       {exporting && <ExportDialog notebookId={notebookId} onClose={closeExport} onError={onError} />}
       {settings && <SettingsDialog onClose={closeSettings} />}
       {panel && (
@@ -242,6 +269,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
           state={panel}
           notebookId={notebookId}
           actions={actions}
+          onSendQueued={(item) => sendQueued(loadConfig(), item)}
           onOpen={(opened) => setPanel({ kind: "result", review: opened })}
           onClose={() => setPanel(null)}
         />

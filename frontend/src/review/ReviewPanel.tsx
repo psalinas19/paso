@@ -2,15 +2,19 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
-import { db, type Review } from "../db";
+import { db, type QueuedReview, type Review } from "../db";
+import { Markdown } from "./markdown";
 import { LOW_CONFIDENCE, type Explanation, type Hint, type Solution, type Step, type StepStatus } from "./api";
 import { describeTiming, splitMath, summarise } from "./merge";
 
 export type ReviewState =
   | { kind: "loading"; since: number }
   | { kind: "error"; message: string }
+  /** Asked for without a connection: kept in the queue instead of sent. */
+  | { kind: "queued"; reason: string; pending: number }
   | { kind: "result"; review: Review }
-  | { kind: "history" };
+  | { kind: "history" }
+  | { kind: "queue" };
 
 export const MARK: Record<StepStatus, { symbol: string; label: string }> = {
   correct: { symbol: "✓", label: "Correcto" },
@@ -54,6 +58,70 @@ export interface ReviewActions {
   onHint(): Promise<void>;
   onExplain(): Promise<void>;
   onSolve(): Promise<void>;
+  /** Ask the tutor; `onText` receives the answer so far as it arrives. */
+  onChat(message: string, onText: (soFar: string) => void): Promise<void>;
+}
+
+/** What to ask first, so the box is never a blank page (SPEC 6.4). */
+function suggestions(review: Review): string[] {
+  const failing = review.verification.steps.find((v) => v.status === "error");
+  const number = failing ? review.recognition.steps.findIndex((s) => s.id === failing.step_id) + 1 : 0;
+  const derived = review.recognition.steps.some((s) => s.relation !== "given");
+  if (number) return [`¿Por qué está mal el paso ${number}?`, "¿Qué regla debí aplicar ahí?", "Dame un ejercicio parecido para practicar"];
+  if (!derived) return ["¿Cómo empiezo este problema?", "¿Qué método se usa aquí y por qué?", "¿Qué necesito saber antes de resolverlo?"];
+  return ["¿Hay una forma más corta de resolverlo?", "¿Cómo compruebo que mi resultado está bien?", "Dame un ejercicio parecido para practicar"];
+}
+
+/** The conversation about this review (SPEC 6.5). Everything the tutor says here is the model's word. */
+function Chat({ review, onChat }: { review: Review; onChat: ReviewActions["onChat"] }) {
+  const [draft, setDraft] = useState("");
+  const [pending, setPending] = useState<{ question: string; answer: string } | null>(null);
+  const [error, setError] = useState("");
+  const messages = review.chat ?? [];
+  const send = (question: string) => {
+    const text = question.trim();
+    if (!text || pending) return;
+    setError("");
+    setDraft("");
+    setPending({ question: text, answer: "" });
+    onChat(text, (answer) => setPending({ question: text, answer })).then(
+      () => setPending(null),
+      (e: Error) => {
+        // The question goes back in the box: nothing was stored, nothing is lost.
+        setError(e.message);
+        setDraft(text);
+        setPending(null);
+      },
+    );
+  };
+  return (
+    <section className="chat" aria-label="Chat con el tutor">
+      <h3>Pregúntale al tutor</h3>
+      <p className="muted">Lo que responde es del modelo y puede equivocarse. Cada pregunta cuesta unos centavos.</p>
+      <ol className="talk">
+        {messages.map((m, i) => (
+          <li key={i} className={m.role}>{m.role === "user" ? <p>{m.content}</p> : <Markdown source={m.content} />}</li>
+        ))}
+        {pending && <li className="user"><p>{pending.question}</p></li>}
+        {pending && <li className="assistant">{pending.answer ? <Markdown source={pending.answer} /> : <p className="muted">Pensando…</p>}</li>}
+      </ol>
+      {!messages.length && !pending && (
+        <div className="chips">
+          {suggestions(review).map((s) => <button key={s} type="button" onClick={() => send(s)}>{s}</button>)}
+        </div>
+      )}
+      {error && <p className="bad" role="alert">{error}</p>}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          send(draft);
+        }}
+      >
+        <textarea value={draft} rows={2} placeholder="Escribe tu pregunta…" aria-label="Tu pregunta" disabled={!!pending} onChange={(e) => setDraft(e.target.value)} />
+        <button type="submit" className="primary" disabled={!!pending || !draft.trim()}>Enviar</button>
+      </form>
+    </section>
+  );
 }
 
 /** Retype a step that was read wrong; the backend restructures it and verifies again. */
@@ -310,6 +378,61 @@ export function Result({ review, actions }: { review: Review; actions?: ReviewAc
         {review.budget_usd.toFixed(2)} USD
       </p>
       {review.timing && <p className="muted cost">{describeTiming(review.timing)}</p>}
+      {actions ? (
+        <Chat key={`chat-${review.id}`} review={review} onChat={actions.onChat} />
+      ) : (
+        !!review.chat?.length && (
+          <section className="chat" aria-label="Chat con el tutor">
+            <h3>Lo que preguntaste</h3>
+            <ol className="talk">
+              {review.chat.map((m, i) => (
+                <li key={i} className={m.role}>{m.role === "user" ? <p>{m.content}</p> : <Markdown source={m.content} />}</li>
+              ))}
+            </ol>
+          </section>
+        )
+      )}
+    </>
+  );
+}
+
+/** Reviews asked for without a connection. Sending them is the user's call: each one costs money. */
+function Queue({ notebookId, onSend, onOpen }: { notebookId: string; onSend: (item: QueuedReview) => Promise<Review>; onOpen: (review: Review) => void }) {
+  const items = useLiveQuery(() => db.queue.where("notebook_id").equals(notebookId).sortBy("created_at"), [notebookId]);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  if (!items) return null;
+  if (!items.length) return <p className="muted">No hay revisiones en espera.</p>;
+  const send = async (list: QueuedReview[]) => {
+    setError("");
+    let last: Review | undefined;
+    for (const item of list) {
+      setBusy(item.id);
+      try {
+        last = await onSend(item);
+      } catch (e) {
+        // Stop at the first failure: the rest would most likely fail the same way.
+        setError((e as Error).message);
+        break;
+      }
+    }
+    setBusy("");
+    if (last && list.length === 1) onOpen(last);
+  };
+  return (
+    <>
+      <p className="muted">Se guardaron porque no había conexión. No se envían solas: cada una cuesta unos centavos.</p>
+      {items.length > 1 && <button type="button" className="primary" disabled={!!busy} onClick={() => void send(items)}>Enviar las {items.length}</button>}
+      {error && <p className="bad" role="alert">{error}</p>}
+      <ul className="history">
+        {items.map((item) => (
+          <li key={item.id} className="queued">
+            <span>{new Date(item.created_at).toLocaleString("es-MX", { dateStyle: "medium", timeStyle: "short" })}</span>
+            <button type="button" disabled={!!busy} onClick={() => void send([item])}>{busy === item.id ? "Enviando…" : "Enviar"}</button>
+            <button type="button" className="quiet" disabled={!!busy} aria-label="Quitar de la cola" onClick={() => void db.queue.delete(item.id)}>Quitar</button>
+          </li>
+        ))}
+      </ul>
     </>
   );
 }
@@ -339,17 +462,18 @@ function History({ notebookId, onOpen }: { notebookId: string; onOpen: (review: 
 }
 
 /** Side panel: what the model read, step by step, and what the verifier says about each. */
-export function ReviewPanel({ state, notebookId, actions, onOpen, onClose }: {
+export function ReviewPanel({ state, notebookId, actions, onSendQueued, onOpen, onClose }: {
   state: ReviewState;
   notebookId: string;
   actions: ReviewActions;
+  onSendQueued: (item: QueuedReview) => Promise<Review>;
   onOpen: (review: Review) => void;
   onClose: () => void;
 }) {
   return (
     <aside className="review" aria-label="Revisión">
       <header>
-        <h2>{state.kind === "history" ? "Revisiones guardadas" : "Revisión"}</h2>
+        <h2>{state.kind === "history" ? "Revisiones guardadas" : state.kind === "queue" ? "Revisiones en espera" : "Revisión"}</h2>
         <button type="button" className="quiet" onClick={onClose} aria-label="Cerrar revisión">✕</button>
       </header>
       {state.kind === "loading" && (
@@ -359,7 +483,14 @@ export function ReviewPanel({ state, notebookId, actions, onOpen, onClose }: {
       )}
       {state.kind === "error" && <p className="bad" role="alert">{state.message}</p>}
       {state.kind === "result" && <Result review={state.review} actions={actions} />}
+      {state.kind === "queued" && (
+        <p role="status">
+          {state.reason} La guardé en la cola: {state.pending === 1 ? "hay una revisión en espera" : `hay ${state.pending} revisiones en espera`}.
+          Cuando tengas conexión, envíala desde <strong>⋯ → Revisiones en espera</strong>.
+        </p>
+      )}
       {state.kind === "history" && <History notebookId={notebookId} onOpen={onOpen} />}
+      {state.kind === "queue" && <Queue notebookId={notebookId} onSend={onSendQueued} onOpen={onOpen} />}
     </aside>
   );
 }

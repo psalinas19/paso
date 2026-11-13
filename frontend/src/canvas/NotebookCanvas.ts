@@ -478,6 +478,9 @@ export class NotebookCanvas {
     const [x0, y0] = toPage(this.view, 0, 0);
     const [x1, y1] = toPage(this.view, this.host.clientWidth, this.host.clientHeight);
     this.placed = [];
+    // Asked to draw before the pages have been read from the database (the
+    // reviews can arrive first): there is nothing to draw yet.
+    if (!this.pages.length) return;
     for (let i = this.pageAt(y0); i <= this.pageAt(y1) && i < this.pages.length; i++) {
       const p = this.pages[i];
       const top = i * PITCH;

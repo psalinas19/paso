@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { expect, test } from "vitest";
 
-test("upgrading a phase 1 database to v2 keeps every stroke and adds reviews", async () => {
+test("upgrading a phase 1 database keeps every stroke and adds the newer tables", async () => {
   // A database exactly as phase 1 left it on the iPad.
   const old = new Dexie("paso");
   old.version(1).stores({
@@ -20,5 +20,6 @@ test("upgrading a phase 1 database to v2 keeps every stroke and adds reviews", a
   expect(await loadStrokes("p1")).toHaveLength(1);
   expect(await db.pages.count()).toBe(1);
   expect(await db.reviews.count()).toBe(0);
-  expect(db.verno).toBe(2);
+  expect(await db.queue.count()).toBe(0); // v3: reviews waiting for a connection
+  expect(db.verno).toBe(3);
 });
