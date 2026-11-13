@@ -1,7 +1,7 @@
 # ADR 0007 — API HTTP de la Fase 2
 
 **Fecha:** 2026-11-12
-**Estado:** aceptado (entrega 2a; se amplía con 2b y 2c)
+**Estado:** aceptado (entregas 2a y 2b; se amplía con 2c)
 
 ## Contexto
 
@@ -29,10 +29,48 @@ La Fase 2 conecta la libreta con el revisor: lazo → **Revisar** → transcripc
 
 **Las revisiones se guardan en los dos lados.** En el backend (`Check`, con la imagen y los trazos, para poder re-reconocer con modelos futuros) y en el iPad (tabla `reviews` de Dexie, versión 2) para leerlas sin conexión.
 
+## Entrega 2b (2026-11-13)
+
+Construida y probada **solo con el proveedor simulado**. Ninguna de estas piezas se ha ejecutado contra el API real ni en el iPad, y los dos prompts nuevos no están medidos: el banco de pruebas sigue vacío.
+
+**De una revisión a un caso de prueba, con una persona en medio.** `python -m app.case new` copia la imagen de un `Check` y escribe su transcripción como `truth.draft.json`. El eval **ignora** los borradores y avisa cuántos hay. `app.case confirm` exige que cada error tenga su tipo de la taxonomía, que todo `sympy` se pueda leer y que las referencias entre pasos existan; enseña qué dice hoy el verificador de cada paso y solo entonces renombra a `truth.json`. Se eligió un archivo aparte, y no una marca dentro de `truth.json`, para que un borrador no pueda medirse por descuido: sin esa barrera el banco compararía al modelo con su propia lectura.
+
+**Corregir un paso: el alumno escribe LaTeX, el modelo lo reestructura.** `POST /api/checks/{id}/steps/{step_id}` recibe el LaTeX. Convertirlo al dialecto de SymPy (ADR 0002) necesita las mismas reglas del reconocimiento (`y` es `y(x)`, `C` es `C1`, unidades fuera), así que lo hace el modelo con un prompt propio (`restructure.system.md`) que **incluye** el de reconocimiento para no duplicar el dialecto. Es una llamada solo de texto, sin imagen. Luego se verifica el desarrollo completo de nuevo.
+- El texto y el id del paso los fija el backend, no el modelo; la confianza pasa a 1.0 porque el alumno acaba de confirmar la lectura.
+- Si el modelo no da un `sympy` utilizable, el paso queda `unverifiable`, nunca `error`.
+- Guardar el mismo texto no llama al modelo.
+- Alternativa descartada: un traductor de LaTeX a SymPy hecho a mano. No conoce el dialecto ni la notación de cada materia.
+
+**La lectura original no se pisa.** `Check.steps_json` conserva lo que leyó el modelo; las correcciones van en `corrected_steps_json` (migración 0002). La diferencia entre ambas es justo lo que el banco de pruebas necesita, y `app.case` propone la versión corregida.
+
+**La pista se pide aparte, después de confirmar la lectura.** El SPEC §7 la ponía dentro de `POST /api/check`. Se separó en `POST /api/checks/{id}/hint` porque una pista escrita sobre un paso mal leído acusa al alumno de un error que no cometió, y porque así no se paga cuando no hace falta. La pista se guarda (`hint_json`); pedirla dos veces no cobra dos veces, y corregir un paso la borra.
+
+**Quién decide qué (SPEC §9.4).**
+- Si el verificador encontró un error, **él** dice qué paso falla. Al modelo se le informa y lo que nombre se ignora; solo redacta la pista y propone el tipo de error.
+- Si no encontró ninguno, el modelo puede señalar únicamente un paso `unverifiable`, y se presenta como opinión. Si señala un paso `correct` o inexistente, se descarta todo lo que dijo.
+- Si todo quedó comprobado, no se llama al modelo.
+- El tipo de error se valida contra la taxonomía de la materia; un id desconocido se descarta.
+- La respuesta separa `verified` (texto nuestro, armado con el resultado del verificador) de `hint` (palabras del modelo). El panel los muestra en dos recuadros con título propio.
+
+**«Sin revelar la respuesta» es una regla del prompt, no una garantía.** No hay comprobación automática de que la pista no suelte el resultado. Juzgarlo requiere leer pistas reales.
+
+**La pista recibe la imagen además de los pasos**, para poder opinar de diagramas y texto. Sube el costo de la llamada; si conviene se decide con el banco de pruebas.
+
+**Un solo método privado para las tres llamadas.** `AnthropicProvider._parse` concentra la salida estructurada (ADR 0005), la caché del prompt de sistema y el manejo de `stop_reason`. `extract_steps` pasa por ahí sin cambiar lo que envía.
+
+### Limitaciones conocidas de 2b
+
+- Sin medir: calidad de la reestructuración y de la pista, y su costo y latencia reales.
+- La corrección no ve la imagen: confía en lo que el alumno escribió.
+- Solo se edita LaTeX a mano; no hay teclado matemático.
+- Solo se corrige el texto de un paso. No se pueden agregar, quitar ni reordenar pasos.
+- Una revisión abierta desde «Revisiones guardadas» necesita el backend encendido, con su misma base de datos, para corregir o pedir pista.
+- No hay registro de errores confirmados (banco de errores, Fase 4).
+
 ## Limitaciones conocidas de 2a
 
-- No hay pista ni clasificación del error: el panel muestra lo que dice el verificador.
-- La transcripción no se puede corregir todavía.
+- ~~No hay pista ni clasificación del error.~~ Resuelto en 2b.
+- ~~La transcripción no se puede corregir.~~ Resuelto en 2b.
 - Solo se revisa una selección de lazo, no la página entera.
 - Sin conexión, Revisar avisa y no hace nada; la cola es de la Fase 3.
 - No hay respaldo alterno de modelo si este declina una imagen: se muestra el error.

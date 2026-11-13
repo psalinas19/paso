@@ -12,6 +12,7 @@ py -3.12 -m uv run python -m pytest                   # tests (sin red)
 py -3.12 -m uv run ruff check . ; py -3.12 -m uv run ruff format .
 py -3.12 -m uv run python -m app.poc <img> --materia ED
 py -3.12 -m uv run python -m app.eval [--no-llm] [--case <id>]
+py -3.12 -m uv run python -m app.case list | new <revisión> --id <caso> | confirm <caso>
 py -3.12 -m uv run python -m uvicorn app.api.main:app --port 8000   # API HTTP
 ```
 
@@ -25,7 +26,7 @@ npm run deploy         # publica en https://paso-libreta.paso-frontend.workers.d
 
 ## Estado
 
-Fase 2, entrega 2a construida: la libreta manda la selección del lazo a `POST /api/check` y muestra transcripción y verificación ([ADR 0007](docs/decisions/0007-fase2-api.md)). Faltan 2b (banco de pruebas, corregir transcripción, pista) y 2c (marcas sobre la hoja). **El reconocimiento aún no se ha medido con el API real: `eval/cases/` está vacío.** Fase 1 sigue en prueba en el iPad ([ADR 0006](docs/decisions/0006-fase1-frontend.md)).
+Fase 2, entregas 2a y 2b construidas ([ADR 0007](docs/decisions/0007-fase2-api.md)): la libreta manda la selección del lazo a `POST /api/check`, muestra transcripción y verificación, deja corregir un paso mal leído y pedir la pista de nivel 1; `app.case` convierte revisiones guardadas en casos del banco. **2b solo se ha probado con el proveedor simulado**: ni los prompts `restructure` y `hint` ni el adaptador se han ejecutado contra el API real, y nada se ha probado en el iPad. Falta 2c (marcas sobre la hoja). **Nada de calidad del modelo está medido: `eval/cases/` está vacío.** Hay un plan sin aprobar en [docs/plan-mecanicas-y-app-nativa.md](docs/plan-mecanicas-y-app-nativa.md): no construyas nada de él sin visto bueno. Fase 1 sigue en prueba en el iPad ([ADR 0006](docs/decisions/0006-fase1-frontend.md)).
 
 ## Arquitectura
 
@@ -35,13 +36,15 @@ app/subjects/             una materia = un YAML (SPEC 12.5)
 app/llm/                  proveedor de IA detrás de LLMProvider (SPEC 12.3)
 app/recognition/          imagen -> pasos
 app/verification/         pasos -> estados, registro de estrategias
-app/evaluation/           métricas del banco de pruebas
-app/poc.py, app/eval.py   los CLIs
+app/tutor/                pasos + verificación -> corrección de un paso, pista de nivel 1
+app/prompts/              un archivo por prompt; su hash es la versión
+app/evaluation/           métricas del banco de pruebas; borradores de casos
+app/poc.py, app/eval.py, app/case.py   los CLIs
 app/api/main.py           API HTTP: token, límite de gasto, persistencia; envuelve lo anterior
 app/db.py, migrations/    SQLModel + Alembic (el API migra al arrancar)
 ```
 
-`recognition` y `verification` son **funciones puras sobre los modelos de `schemas.py`**: sin estado global, sin framework. La Fase 2 las envuelve en endpoints sin reescribirlas.
+`recognition`, `verification` y `tutor` son **funciones puras sobre los modelos de `schemas.py`**: sin estado global, sin framework. La Fase 2 las envuelve en endpoints sin reescribirlas.
 
 ```
 frontend/src/db.ts            esquema Dexie; cambios = nueva .version(n) con migración
@@ -82,6 +85,11 @@ frontend/src/review/          cliente del API, imagen de la selección, panel y 
 14. **`app/api/main.py` no lleva `from __future__ import annotations`**: FastAPI resuelve las anotaciones en tiempo de ejecución y las dependencias son locales a `create_app()`.
 15. **Cambios de tablas = migración nueva de Alembic** en `backend/migrations/versions/`; nunca `create_all`. En el frontend, tabla nueva = `db.version(n)` nueva en `db.ts`.
 16. **Un script que arranque el API en Windows necesita `if __name__ == "__main__":`**: el verificador usa subprocesos y sin la guarda el hijo vuelve a ejecutar el script.
+
+17. **Qué paso falla lo decide el verificador, no el modelo.** En la pista (`app/tutor/hint.py`), si hay un `error` el modelo solo redacta y clasifica; si no lo hay, solo puede señalar un paso `unverifiable`, y eso se presenta como opinión. Un paso `correct` nunca se señala: sería un falso ❌ por la puerta de atrás. Lo comprobado y lo opinado viajan en campos distintos (`Hint.verified` y `Hint.hint`) y el panel los pinta en recuadros distintos (SPEC §9.4).
+18. **`Check.steps_json` no se reescribe.** Es lo que leyó el modelo y lo que mide el banco. Las correcciones del alumno van en `corrected_steps_json`; `verification_json` describe siempre los pasos vigentes (`current_steps()` en `db.py`).
+19. **Un borrador de caso no se mide.** `app.case new` escribe `truth.draft.json`; el eval lo ignora hasta `app.case confirm`. Sin esa barrera el banco mediría al modelo contra su propia lectura.
+20. **El prompt `restructure` incluye el de reconocimiento** en vez de copiar el dialecto. Editar `recognize.system.md` cambia los dos.
 
 ## Idioma
 

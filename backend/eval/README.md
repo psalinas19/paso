@@ -2,7 +2,31 @@
 
 Este es el activo que hace comparables las corridas entre semestres (SPEC 10, §12.4). Crece cada semestre con ejercicios de las materias nuevas. **Se versiona en git, imágenes incluidas.**
 
-## Cómo agregar un caso
+## Desde una revisión hecha en la libreta (lo normal)
+
+Lo que el modelo lee en producción es tinta de la app, así que los casos salen de revisiones reales (ADR 0007). El backend guarda cada revisión con su imagen.
+
+```powershell
+py -3.12 -m uv run python -m app.case list
+py -3.12 -m uv run python -m app.case new a1b2c3d4 --id ed-01 --topic variables-separables
+```
+
+`new` crea `cases/ed-01/` con la imagen, `meta.yaml` y **`truth.draft.json`**: la lectura del modelo (o tu versión, si corregiste pasos en la libreta) como **propuesta**. Mientras exista el borrador, el caso **no se mide**: `app.eval` lo salta y te avisa.
+
+Tu parte, que nadie puede hacer por ti:
+
+1. Abre la imagen y `truth.draft.json` lado a lado.
+2. Corrige cada paso hasta que diga lo que de verdad está escrito: `latex`, `sympy`, `relation`, `derives_from`.
+3. En cada paso con error hay un `seeded_error` con `"type": "REVISAR"`. Si el error es tuyo y está en la hoja, pon el tipo de la materia, decide `verifiable` (ver abajo) y borra la palabra REVISAR de la nota. Si el paso estaba bien y fue un error de lectura, quita `seeded_error` y pon `"expected_status": "correct"`.
+4. Confirma:
+
+```powershell
+py -3.12 -m uv run python -m app.case confirm ed-01
+```
+
+`confirm` se niega mientras falte algo, y te enseña qué dice hoy el verificador de cada paso. Si anotaste un paso como correcto y el verificador lo marca con error, te avisa pero no te frena: si tu anotación está bien, eso es un falso error y el banco existe para contarlo.
+
+## Cómo agregar un caso a mano
 
 Crea una carpeta por ejercicio dentro de `cases/`:
 

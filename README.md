@@ -4,7 +4,7 @@ Libreta inteligente para iPad que revisa, corrige y explica desarrollos de ingen
 
 El spec completo está en [docs/SPEC.md](docs/SPEC.md). Las decisiones de diseño, en [docs/decisions/](docs/decisions/).
 
-**Estado: Fase 2 en curso** — la libreta ya puede pedirle una revisión al backend:
+**Estado: Fase 2 en curso** — la libreta ya puede pedirle una revisión al backend, corregir un paso mal leído y pedir una pista (esto último, aún sin probar con el modelo real):
 
 - **La libreta** (`frontend/`): PWA para iPad que funciona sin conexión. Ver [ADR 0006](docs/decisions/0006-fase1-frontend.md).
 - **El revisor** (`backend/`): transcribe y verifica un desarrollo. Se usa desde la libreta por HTTP ([ADR 0007](docs/decisions/0007-fase2-api.md)) o con dos comandos de terminal ([ADR 0001](docs/decisions/0001-fase0-scope.md)).
@@ -91,6 +91,11 @@ py -3.12 -m uv run python -m app.eval
 # Lo mismo desde la caché, sin gastar API
 py -3.12 -m uv run python -m app.eval --no-llm
 
+# Convertir una revisión hecha desde la libreta en un caso del banco de pruebas
+py -3.12 -m uv run python -m app.case list
+py -3.12 -m uv run python -m app.case new <revisión> --id ed-01
+py -3.12 -m uv run python -m app.case confirm ed-01
+
 # Tests (no tocan la red: el modelo va simulado)
 py -3.12 -m uv run pytest
 
@@ -114,6 +119,8 @@ La **caché de reconocimiento** (`backend/.cache/`) guarda la transcripción de 
 ## Banco de pruebas
 
 Cómo agregar ejercicios y anotar la transcripción correcta: [backend/eval/README.md](backend/eval/README.md).
+
+**Hoy el banco está vacío**: nada sobre la calidad de la lectura ni de la pista está medido todavía. El camino corto para llenarlo es revisar ejercicios desde la libreta y convertirlos con `app.case` (ver abajo).
 
 ## Revisar desde la libreta
 
@@ -152,13 +159,58 @@ El túnel imprime una dirección `https://….trycloudflare.com`. **Cambia en ca
 
 Luego, en un cuaderno: herramienta **lazo**, encierra el desarrollo y toca **Revisar**.
 
+### Si un paso se leyó mal
+
+Debajo de cada paso hay un enlace **Corregir lectura**. Escribe el paso en LaTeX tal como está en tu hoja (se ve una vista previa mientras tecleas) y toca *Guardar y verificar*. El backend lo vuelve a estructurar y verifica todo el desarrollo otra vez. El paso queda marcado «Corregido por ti».
+
+- Los pasos de **lectura dudosa** (confianza menor a 0.7) siguen resaltados en ámbar: empieza por esos.
+- Si el backend no logra convertir lo que escribiste a una forma comprobable, el paso queda como **no verificable**, nunca como error.
+- Cada corrección es una llamada pequeña al modelo y se suma al costo de la revisión.
+
+### La pista
+
+Cuando la lectura esté bien, toca **Pedir pista**. Aparecen dos recuadros que nunca se mezclan:
+
+- **Comprobado con matemáticas** (verde): lo que demostró el verificador. Si encontró un error, aquí dice en qué paso.
+- **Opinión del modelo (puede equivocarse)** (ámbar): el tipo de error según la lista de la materia y una pista corta, sin la respuesta.
+
+Qué paso falla lo decide el verificador, no el modelo. Si el verificador no encontró nada, el modelo solo puede opinar sobre pasos que no se pudieron comprobar, y nunca puede señalar un paso que ya se demostró correcto. Si todo quedó comprobado, la pista no cuesta nada porque no se llama al modelo. Corregir un paso después borra la pista, porque se escribió sobre la lectura anterior.
+
+### Llenar el banco de pruebas con tus revisiones
+
+Cada revisión queda guardada en el backend con su imagen. Para volverla un caso de prueba, desde `backend\`:
+
+```powershell
+py -3.12 -m uv run python -m app.case list
+```
+
+```powershell
+py -3.12 -m uv run python -m app.case new a1b2c3d4 --id ed-01 --topic variables-separables
+```
+
+Eso crea `backend\eval\cases\ed-01\` con la imagen y un **borrador** (`truth.draft.json`) de cómo se leyó. El borrador **no cuenta** en el banco: primero lo abres junto a la imagen, corriges lo que haga falta y luego:
+
+```powershell
+py -3.12 -m uv run python -m app.case confirm ed-01
+```
+
+`confirm` revisa que todo esté completo, te muestra qué dice hoy el verificador de cada paso y solo entonces lo mete al banco. Si corregiste pasos desde la libreta, el borrador ya trae tu versión. Detalles en [backend/eval/README.md](backend/eval/README.md).
+
 ### Lo que conviene saber
 
-- Cada revisión cuesta dinero (centavos de dólar). El panel muestra el costo y el gasto del mes. Al llegar a `MONTHLY_BUDGET_USD` el backend rechaza revisiones nuevas.
+- Cada revisión cuesta dinero (centavos de dólar), y cada corrección y cada pista un poco más. El panel muestra el costo acumulado de la revisión y el gasto del mes. Al llegar a `MONTHLY_BUDGET_USD` el backend rechaza revisiones nuevas.
 - La materia del cuaderno decide la notación y las comprobaciones. La plantilla genérica usa la materia `general`.
 - Las revisiones se guardan en `backend\data\` (base de datos e imágenes) y también en el iPad: **⋯ → Revisiones guardadas** funciona sin conexión.
 - Quien tenga la dirección del túnel **y** el token puede gastar tu clave. No compartas el token; si se filtra, cámbialo en `.env` y reinicia.
 
 ## Qué falta
 
-Resto de la Fase 2 (pista, corregir la transcripción, marcas sobre la hoja, banco de pruebas con tinta real) y Fases 3 a 5 (chat, cola sin conexión, banco de errores, respaldo automático, despliegue del backend) según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.
+De la Fase 2:
+
+- **Probar la entrega 2b con el modelo real y en el iPad.** Corregir un paso, la pista y el comando `app.case` están construidos y probados con un modelo simulado; nunca se han ejecutado contra el API de Anthropic ni en el iPad.
+- **Medir.** Llenar el banco de pruebas y sacar la línea base con `app.eval`. Sin eso no se sabe qué tan bien lee el modelo ni si la pista es buena, y no se puede ajustar ningún prompt (SPEC §12.4).
+- **Entrega 2c:** la posición de cada paso y las marcas sobre la hoja.
+
+Hay además un plan pendiente de tu aprobación sobre gestos de la libreta y la ruta a app nativa: [docs/plan-mecanicas-y-app-nativa.md](docs/plan-mecanicas-y-app-nativa.md).
+
+Después, Fases 3 a 5 (chat, cola sin conexión, banco de errores, respaldo automático, despliegue del backend) según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.
