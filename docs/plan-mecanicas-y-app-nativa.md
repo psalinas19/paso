@@ -7,7 +7,8 @@
 - **Plan aprobado.**
 - **No se paga la cuenta de desarrollador de Apple.** La parte nativa se hará con **la Mac de tu papá**.
 - **Ya construido** (probado en navegador de escritorio, **falta el iPad**): la primera tanda de la Parte A (deshacer con dos dedos y rehacer con tres, indicador de página, duplicar selección, esquinas que estiran sin deformar, recordar pluma y grosor) e «Importar cuaderno desde un respaldo».
-- **Sin decidir todavía:** garabatear para borrar (pregunta 2) y cuándo van las miniaturas (pregunta 3).
+- **Respuestas a las nueve preguntas (2026-11-13):** garabatear para borrar sí, **apagado de fábrica**; miniaturas en la **segunda tanda**; importar JSON sí (hecho); SPEC ajustado para permitir el envoltorio nativo como complemento; no se paga la cuenta; el repositorio es público, así que la compilación de comprobación corre en GitHub Actions; hay Mac disponible; la frase del README sobre el borrado de Safari se corrigió.
+- **Capacitor preparado** (Etapa 0): ver [app-nativa.md](app-nativa.md). Sin ejecutar en ningún dispositivo.
 
 ### Qué cambia en la Parte B al usar una Mac sin cuenta de pago
 

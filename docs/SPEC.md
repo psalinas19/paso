@@ -64,7 +64,7 @@ Libreta inteligente para iPad que revisa, corrige y explica desarrollos de ingen
 - Uso offline: notas e historial de revisiones sin conexión, y cola de revisiones pendientes.
 
 **Fuera (no implementar):**
-- App nativa.
+- App nativa reescrita. (Desde 2026-11-13 se permite un **envoltorio** nativo de la misma PWA, como complemento y no como reemplazo, para recibir el doble toque del Apple Pencil: ver `docs/app-nativa.md`.)
 - Sincronización multiplataforma o multi-dispositivo.
 - Cuentas o multiusuario, y colaboración.
 - Revisión en vivo trazo por trazo.
@@ -354,5 +354,5 @@ La app debe durar varios años con un solo mantenedor (yo, con ayuda de Claude C
 7. **Stack aburrido y fijado.**
    - Versiones de dependencias fijadas y actualizaciones deliberadas (una vez por semestre, con tests y eval).
    - Registrar decisiones importantes en `/docs/decisions/` como ADRs cortos.
-8. **Puerta abierta a app nativa.** La API y el formato de trazos deben ser independientes de la PWA, para que en el futuro una app nativa de iPad pueda reemplazar el frontend sin tocar el backend ni perder datos. No construir nada nativo ahora.
+8. **Puerta abierta a app nativa.** La API y el formato de trazos deben ser independientes de la PWA, para que en el futuro una app nativa de iPad pueda reemplazar el frontend sin tocar el backend ni perder datos. No reescribir nada en nativo; el envoltorio de `docs/app-nativa.md` reutiliza la PWA tal cual.
 9. **Escala esperada:** un usuario y del orden de miles de revisiones y algunos GB de imágenes en toda la carrera. SQLite y almacenamiento en disco son suficientes; no introducir servicios adicionales (colas, bases de datos separadas, microservicios) sin una razón medida.

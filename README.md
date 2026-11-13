@@ -53,7 +53,11 @@ En un cuaderno, botón **⋯** → *Exportar…*: eliges qué páginas van al PD
 
 Para **restaurar** un respaldo: en la biblioteca, dentro de la materia, toca *Importar cuaderno desde un respaldo (.json)…* y elige el archivo. Entra como un cuaderno nuevo; nunca pisa uno existente.
 
-Mientras no exista el respaldo automático al servidor (Fase 5), **exportar es la única copia fuera del iPad**. Safari puede borrar los datos de una app web que lleva semanas sin abrirse.
+Mientras no exista el respaldo automático al servidor (Fase 5), **exportar es la única copia fuera del iPad**. Instalada en la pantalla de inicio, la app no sufre el borrado a los 7 días que Safari aplica a las páginas web; el riesgo que queda es que iOS reclame espacio si el iPad se llena (según la documentación de WebKit, consultada vía buscador el 2026-11-13). Por eso el respaldo sigue importando.
+
+### App nativa (opcional)
+
+Existe un proyecto para instalar la libreta como app de iPad y así recibir el **doble toque del Apple Pencil**. Necesita una Mac con Xcode y, con cuenta gratuita, hay que reinstalarla cada 7 días. Todavía no se ha probado en ningún iPad. Guía: [docs/app-nativa.md](docs/app-nativa.md).
 
 ## El revisor (backend)
 
