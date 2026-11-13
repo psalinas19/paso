@@ -41,8 +41,10 @@ from app.llm.base import LLMProvider, ProviderError
 from app.recognition.image import prepare_image
 from app.recognition.service import recognize
 from app.schemas import (
+    Explanation,
     Hint,
     RecognitionResult,
+    Solution,
     Step,
     StepKind,
     StepRelation,
@@ -51,7 +53,9 @@ from app.schemas import (
 )
 from app.subjects.loader import SubjectConfig, SubjectNotFoundError, load_subject_cached
 from app.tutor.correction import MAX_LATEX_CHARS, UnknownStepError, correct_step
+from app.tutor.explain import build_explanation
 from app.tutor.hint import build_hint
+from app.tutor.solve import NothingToSolveError, build_solution
 from app.verification.runner import verify, verify_recognition
 from app.verification.worker import TimeoutWorker
 
@@ -75,6 +79,8 @@ class CheckResponse(BaseModel):
     #: Ids of the steps the student retyped.
     corrected: list[str] = []
     hint: Hint | None = None
+    explanation: Explanation | None = None
+    solution: Solution | None = None
     #: What this call cost, not the review's running total.
     cost_usd: float
     usage: UsageSummary
@@ -204,6 +210,12 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
             verification=VerificationResult.model_validate_json(row.verification_json),
             corrected=corrected,
             hint=Hint.model_validate_json(row.hint_json) if row.hint_json else None,
+            explanation=(
+                Explanation.model_validate_json(row.explanation_json)
+                if row.explanation_json
+                else None
+            ),
+            solution=Solution.model_validate_json(row.solution_json) if row.solution_json else None,
             cost_usd=round(cost, 4),
             usage=summary(db),
         )
@@ -292,7 +304,8 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         cost = charge(db, "correct", usage)
         row.corrected_steps_json = dump_steps(updated)
         row.verification_json = verification.model_dump_json()
-        row.hint_json = None  # written for the old reading; it no longer applies
+        # Written for the old reading; none of it applies any more.
+        row.hint_json = row.explanation_json = row.solution_json = None
         db.add(row)
         db.commit()
         return respond(db, row, cost)
@@ -318,6 +331,79 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
 
         cost = charge(db, "hint", usage)
         row.hint_json = result.model_dump_json()
+        db.add(row)
+        db.commit()
+        return respond(db, row, cost)
+
+    def picture_of(row: Check):
+        try:
+            return prepare_image(Path(row.image_path), settings.max_image_edge)
+        except (OSError, UnidentifiedImageError):
+            return None  # the tutor still works from the transcription alone
+
+    def verifier_for(subject_config: SubjectConfig):
+        def run(steps: list[Step]) -> VerificationResult:
+            with worker_lock:
+                return verify(subject_config, steps, worker=worker)
+
+        return run
+
+    @app.post("/api/checks/{check_id}/level/2", dependencies=auth)
+    def explain(db: Db, check_id: str) -> CheckResponse:
+        """Level 2 (SPEC 2.5): why each step holds, what went wrong and the corrected step."""
+        row, subject_config = stored(db, check_id)
+        if row.explanation_json:
+            return respond(db, row, 0.0)  # already paid for; a correction clears it
+
+        refuse_over_budget(db)
+        steps, _ = current_steps(row)
+        verification = VerificationResult.model_validate_json(row.verification_json)
+        try:
+            result, usage = build_explanation(
+                subject_config,
+                steps,
+                verification,
+                model(),
+                verifier_for(subject_config),
+                picture_of(row),
+            )
+        except ProviderError as exc:
+            raise HTTPException(502, str(exc)) from exc
+
+        cost = charge(db, "explain", usage)
+        row.explanation_json = result.model_dump_json()
+        row.max_level_shown = max(row.max_level_shown, 2)
+        db.add(row)
+        db.commit()
+        return respond(db, row, cost)
+
+    @app.post("/api/checks/{check_id}/solve", dependencies=auth)
+    def solve(db: Db, check_id: str) -> CheckResponse:
+        """Level 3 (SPEC 6.4): the worked solution, verified before it is shown."""
+        row, subject_config = stored(db, check_id)
+        if row.solution_json:
+            return respond(db, row, 0.0)
+
+        refuse_over_budget(db)
+        steps, _ = current_steps(row)
+        verification = VerificationResult.model_validate_json(row.verification_json)
+        try:
+            result, usages = build_solution(
+                subject_config,
+                steps,
+                verification,
+                model(),
+                verifier_for(subject_config),
+                picture_of(row),
+            )
+        except NothingToSolveError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except ProviderError as exc:
+            raise HTTPException(502, str(exc)) from exc
+
+        cost = sum(charge(db, "solve", usage) for usage in usages)
+        row.solution_json = result.model_dump_json()
+        row.max_level_shown = 3
         db.add(row)
         db.commit()
         return respond(db, row, cost)

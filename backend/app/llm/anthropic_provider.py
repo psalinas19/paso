@@ -15,16 +15,24 @@ import anthropic
 from pydantic import BaseModel
 
 from app.llm.base import (
+    ExplanationDraft,
     HintDraft,
     LLMProvider,
     PreparedImage,
     PromptSpec,
     ProviderError,
     ProviderResult,
+    SolutionDraft,
 )
-from app.llm.schema import HintPayload, RecognitionPayload, RecognizedStep
+from app.llm.schema import (
+    ExplanationPayload,
+    HintPayload,
+    RecognitionPayload,
+    RecognizedStep,
+    SolutionPayload,
+)
 from app.llm.usage import estimate_cost
-from app.schemas import Usage
+from app.schemas import Step, Usage
 
 #: Generous enough for a full page of steps; the output is JSON, not prose. The
 #: model's own thinking counts against it too, so the short calls keep the same cap.
@@ -78,10 +86,9 @@ class AnthropicProvider(LLMProvider):
         instruction: str,
         image: PreparedImage | None,
     ) -> HintDraft:
-        content: list[dict[str, Any]] = [{"type": "text", "text": instruction}]
-        if image is not None:
-            content.insert(0, self._image_block(image))
-        payload, usage = self._parse(system_prompt, content, HintPayload, endpoint="hint")
+        payload, usage = self._parse(
+            system_prompt, self._content(instruction, image), HintPayload, endpoint="hint"
+        )
         return HintDraft(
             step_id=payload.step_id,
             error_type=payload.error_type,
@@ -89,7 +96,63 @@ class AnthropicProvider(LLMProvider):
             usage=usage,
         )
 
+    def explain(
+        self,
+        system_prompt: PromptSpec,
+        instruction: str,
+        image: PreparedImage | None,
+    ) -> ExplanationDraft:
+        payload, usage = self._parse(
+            system_prompt, self._content(instruction, image), ExplanationPayload, "explain"
+        )
+        return ExplanationDraft(
+            overview=payload.overview,
+            notes=[(n.step_id, n.note) for n in payload.notes],
+            suspect_step_id=payload.suspect_step_id,
+            corrected_latex=payload.corrected_latex,
+            corrected_sympy=payload.corrected_sympy,
+            next_step=payload.next_step,
+            takeaway=payload.takeaway,
+            usage=usage,
+        )
+
+    def solve(
+        self,
+        system_prompt: PromptSpec,
+        instruction: str,
+        image: PreparedImage | None,
+    ) -> SolutionDraft:
+        payload, usage = self._parse(
+            system_prompt, self._content(instruction, image), SolutionPayload, "solve"
+        )
+        return SolutionDraft(
+            goal=payload.goal,
+            method=payload.method,
+            steps=[
+                Step(
+                    id=s.id,
+                    latex=s.latex,
+                    sympy=s.sympy,
+                    kind=s.kind,
+                    relation=s.relation,
+                    derives_from=s.derives_from,
+                    confidence=1.0,
+                )
+                for s in payload.steps
+            ],
+            whys={s.id: s.why for s in payload.steps},
+            answer=payload.answer,
+            check=payload.check,
+            usage=usage,
+        )
+
     # --- internals --------------------------------------------------------
+
+    def _content(self, instruction: str, image: PreparedImage | None) -> list[dict[str, Any]]:
+        content: list[dict[str, Any]] = [{"type": "text", "text": instruction}]
+        if image is not None:
+            content.insert(0, self._image_block(image))
+        return content
 
     @staticmethod
     def _image_block(image: PreparedImage) -> dict[str, Any]:

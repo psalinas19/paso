@@ -89,6 +89,33 @@ class HintDraft:
     usage: Usage
 
 
+@dataclass
+class ExplanationDraft:
+    """The model's side of a level-2 explanation."""
+
+    overview: str
+    notes: list[tuple[str, str]]  # (step id, comment)
+    suspect_step_id: str | None
+    corrected_latex: str | None
+    corrected_sympy: str | None
+    next_step: str
+    takeaway: str
+    usage: Usage
+
+
+@dataclass
+class SolutionDraft:
+    """The model's worked solution, before our verifier has looked at it."""
+
+    goal: str
+    method: str
+    steps: list[Step]
+    whys: dict[str, str]  # step id -> why this step
+    answer: str
+    check: str
+    usage: Usage
+
+
 class ProviderError(RuntimeError):
     """The provider could not produce a usable result."""
 
@@ -121,4 +148,22 @@ class LLMProvider(Protocol):
         image: PreparedImage | None,
     ) -> HintDraft:
         """Write a level-1 hint for an already transcribed and verified development."""
+        ...
+
+    def explain(
+        self,
+        system_prompt: PromptSpec,
+        instruction: str,
+        image: PreparedImage | None,
+    ) -> ExplanationDraft:
+        """Explain an already transcribed and verified development, step by step."""
+        ...
+
+    def solve(
+        self,
+        system_prompt: PromptSpec,
+        instruction: str,
+        image: PreparedImage | None,
+    ) -> SolutionDraft:
+        """Solve the problem on the page as structured steps our verifier can check."""
         ...

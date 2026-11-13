@@ -92,13 +92,12 @@ def build_hint(
 
     if first_error is None and not unchecked:
         # Everything was checked and holds: nothing a model could add, so no call.
-        return (
-            Hint(
-                basis=HintBasis.NONE,
-                verified="El verificador simbólico comprobó todos los pasos y no encontró errores.",
-            ),
-            None,
-        )
+        if all(s.relation is StepRelation.GIVEN for s in steps):
+            # Nothing was checked at all: saying "no errors" here would be a lie.
+            said = "Solo está el enunciado: todavía no hay pasos que comprobar."
+        else:
+            said = "El verificador simbólico comprobó todos los pasos y no encontró errores."
+        return Hint(basis=HintBasis.NONE, verified=said), None
 
     prompt = build_prompt(subject)
     failing = first_error.step_id if first_error else None

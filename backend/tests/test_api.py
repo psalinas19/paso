@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 from app.api.main import create_app
 from app.config import Settings
 from app.db import Check, UsageLog, make_engine
-from app.llm.base import HintDraft, ProviderError, ProviderResult
+from app.llm.base import ExplanationDraft, HintDraft, ProviderError, ProviderResult, SolutionDraft
 from app.schemas import StepKind as K
 from app.schemas import StepRelation as R
 from app.schemas import Usage
@@ -35,6 +35,19 @@ class FakeProvider:
         self.instructions: list[str] = []
         self.hint_images: list[object] = []
         self.fail = False
+        #: What the model answers when asked to explain.
+        self.explanation = {
+            "notes": [("s2", "Restaste 4 en ambos lados."), ("s3", "Dividiste mal."), ("s9", "?")],
+            "suspect": None,
+            "corrected": ("x = 3", "Eq(x, 3)"),
+        }
+        #: Successive answers when asked to solve: lists of (id, sympy, relation, parents).
+        self.solutions = [
+            [
+                ("r1", "Eq(2*x, 6)", R.EQUIVALENT, ["g1"]),
+                ("r2", "Eq(x, 3)", R.RESULT, ["r1"]),
+            ]
+        ]
 
     def extract_steps(self, image, system_prompt, instruction):
         del image, system_prompt, instruction
@@ -73,6 +86,40 @@ class FakeProvider:
             error_type=error_type,
             hint=text,
             usage=Usage(endpoint="hint", model=self.model, cost_usd=0.02),
+        )
+
+    def explain(self, system_prompt, instruction, image):
+        del image
+        self.calls += 1
+        self.instructions.append(system_prompt.text + instruction)
+        latex, sympy_text = self.explanation["corrected"] or (None, None)
+        return ExplanationDraft(
+            overview="Es una ecuación lineal: se despeja la incógnita.",
+            notes=list(self.explanation["notes"]),
+            suspect_step_id=self.explanation["suspect"],
+            corrected_latex=latex,
+            corrected_sympy=sympy_text,
+            next_step="",
+            takeaway="Lo que haces de un lado, hazlo del otro.",
+            usage=Usage(endpoint="explain", model=self.model, cost_usd=0.03),
+        )
+
+    def solve(self, system_prompt, instruction, image):
+        del system_prompt, image
+        self.calls += 1
+        self.instructions.append(instruction)
+        answer = self.solutions.pop(0) if len(self.solutions) > 1 else self.solutions[0]
+        steps = [
+            mkstep(i, text, K.EQUATION, rel, tuple(parents)) for i, text, rel, parents in answer
+        ]
+        return SolutionDraft(
+            goal="Despejar x.",
+            method="Operaciones inversas en ambos lados.",
+            steps=steps,
+            whys={step.id: f"porque {step.id}" for step in steps},
+            answer="$x = 3$",
+            check="Sustituyendo: $2(3) + 4 = 10$.",
+            usage=Usage(endpoint="solve", model=self.model, cost_usd=0.04),
         )
 
 
@@ -376,4 +423,174 @@ def test_hints_respect_token_budget_and_unknown_reviews(client, settings, provid
         db.add(UsageLog(endpoint="check", model="fake-model", cost_usd=1.0))
         db.commit()
     assert ask_hint(client, first["id"]).status_code == 402
+    assert provider.calls == calls
+
+
+# --- level 2: the explanation -------------------------------------------------
+
+
+def ask(client, check_id, what, **overrides):
+    request = {"headers": AUTH}
+    request.update(overrides)
+    return client.post(f"/api/checks/{check_id}/{what}", **request)
+
+
+def test_the_explanation_comments_the_steps_and_checks_its_own_correction(client, provider):
+    first = post_check(client).json()
+
+    response = ask(client, first["id"], "level/2")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    told = body["explanation"]
+
+    assert (told["failing_step_id"], told["basis"]) == ("s3", "verified")
+    # Comments on steps that do not exist are dropped.
+    assert [n["step_id"] for n in told["notes"]] == ["s2", "s3"]
+    # The corrected step went through the verifier before being shown.
+    assert told["corrected"] == {
+        "step_id": "s3",
+        "latex": "x = 3",
+        "sympy": "Eq(x, 3)",
+        "verified": True,
+        "detail": told["corrected"]["detail"],
+    }
+    assert told["correction_rejected"] is False
+    assert body["cost_usd"] == 0.03
+    sent = provider.instructions[-1]
+    assert "id s3" in sent and "nunca digas que está mal" in sent and "Derivative" in sent
+
+    # Asking again is free.
+    calls = provider.calls
+    assert ask(client, first["id"], "level/2").json()["cost_usd"] == 0
+    assert provider.calls == calls
+
+
+def test_a_wrong_correction_from_the_model_is_never_shown(client, provider):
+    first = post_check(client).json()
+    provider.explanation["corrected"] = ("x = 5", "Eq(x, 5)")  # still wrong
+
+    told = ask(client, first["id"], "level/2").json()["explanation"]
+
+    assert told["corrected"] is None and told["correction_rejected"] is True
+    assert told["failing_step_id"] == "s3"
+
+
+def test_a_correction_that_cannot_be_checked_is_labelled_unverified(client, provider):
+    first = post_check(client).json()
+    provider.explanation["corrected"] = ("x = 3", None)
+
+    told = ask(client, first["id"], "level/2").json()["explanation"]
+
+    assert told["corrected"]["verified"] is False
+
+
+def test_the_explanation_cannot_doubt_a_step_that_was_proved(client, provider):
+    first = post_check(client).json()
+    correct(client, first["id"], "s3", "x = 3")  # now everything checks out
+    provider.explanation.update(suspect="s2", corrected=("2x = 5", "Eq(2*x, 5)"))
+
+    told = ask(client, first["id"], "level/2").json()["explanation"]
+
+    assert (told["failing_step_id"], told["basis"]) == (None, "none")
+    assert told["corrected"] is None and told["correction_rejected"] is False
+    assert told["overview"]  # it still explains why the development is right
+
+
+def test_a_doubt_about_an_unchecked_step_is_an_opinion_in_the_explanation(client, provider):
+    first = post_check(client).json()
+    provider.rebuilt = (None, ["s2"])
+    correct(client, first["id"], "s3", "\\text{entonces } x = 4")
+    provider.explanation.update(suspect="s3", corrected=("x = 3", "Eq(x, 3)"))
+
+    told = ask(client, first["id"], "level/2").json()["explanation"]
+
+    assert (told["failing_step_id"], told["basis"]) == ("s3", "model_opinion")
+    assert told["corrected"]["verified"] is True  # x = 3 does follow from 2x = 6
+
+
+# --- level 3: the solution ----------------------------------------------------
+
+
+def test_the_solution_starts_from_the_students_data_and_is_verified(client, settings, provider):
+    first = post_check(client).json()
+
+    response = ask(client, first["id"], "solve")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    solution = body["solution"]
+
+    assert solution["verified"] is True and solution["attempts"] == 1
+    assert (solution["checked_steps"], solution["wrong_steps"]) == (2, 0)
+    steps = solution["steps"]
+    # The problem data is the student's own first line, not something the model chose.
+    assert steps[0]["given"] is True and steps[0]["step"]["sympy"] == "Eq(2*x + 4, 10)"
+    assert [s["step"]["id"] for s in steps] == ["g1", "r1", "r2"]
+    assert [s["status"] for s in steps] == ["correct", "correct", "correct"]
+    assert steps[2]["why"] == "porque r2"
+    assert body["cost_usd"] == 0.04
+    assert "g1 | latex" in provider.instructions[-1]
+
+    with Session(make_engine(settings.resolved_database_url)) as db:
+        assert db.exec(select(Check)).one().max_level_shown == 3
+    calls = provider.calls
+    assert ask(client, first["id"], "solve").json()["cost_usd"] == 0 and provider.calls == calls
+
+
+def test_a_wrong_solution_gets_one_chance_to_be_fixed(client, provider):
+    first = post_check(client).json()
+    provider.solutions = [
+        [("r1", "Eq(2*x, 6)", R.EQUIVALENT, ["g1"]), ("r2", "Eq(x, 4)", R.RESULT, ["r1"])],
+        [("r1", "Eq(2*x, 6)", R.EQUIVALENT, ["g1"]), ("r2", "Eq(x, 3)", R.RESULT, ["r1"])],
+    ]
+
+    body = ask(client, first["id"], "solve").json()
+
+    assert body["solution"]["verified"] is True and body["solution"]["attempts"] == 2
+    assert body["cost_usd"] == 0.08  # both calls are paid for and counted
+    assert "no pasó la comprobación" in provider.instructions[-1]
+    assert "r2" in provider.instructions[-1]
+
+
+def test_a_solution_that_stays_wrong_is_shown_with_a_warning_not_a_badge(client, provider):
+    first = post_check(client).json()
+    provider.solutions = [
+        [("r1", "Eq(2*x, 6)", R.EQUIVALENT, ["g1"]), ("r2", "Eq(x, 4)", R.RESULT, ["r1"])]
+    ]
+
+    solution = ask(client, first["id"], "solve").json()["solution"]
+
+    assert solution["verified"] is False and solution["attempts"] == 2
+    assert solution["wrong_steps"] == 1
+    assert solution["steps"][-1]["status"] == "error"
+
+
+def test_the_model_cannot_pass_its_answer_off_as_problem_data(client, provider):
+    first = post_check(client).json()
+    # Declared "given", the verifier would accept x = 4 without looking at it.
+    provider.solutions = [[("r1", "Eq(x, 4)", R.GIVEN, [])]]
+
+    solution = ask(client, first["id"], "solve").json()["solution"]
+
+    assert solution["verified"] is False
+    assert solution["steps"][-1]["step"]["relation"] != "given"
+    assert solution["steps"][-1]["status"] != "correct"
+
+
+def test_explanations_and_solutions_follow_corrections_budget_and_token(client, settings, provider):
+    first = post_check(client).json()
+    ask(client, first["id"], "level/2")
+    ask(client, first["id"], "solve")
+
+    fixed = correct(client, first["id"], "s3", "x = 3").json()
+    assert fixed["explanation"] is None and fixed["solution"] is None
+
+    calls = provider.calls
+    for what in ("level/2", "solve"):
+        assert ask(client, first["id"], what, headers={}).status_code == 401
+        assert ask(client, "nope", what).status_code == 404
+    with Session(make_engine(settings.resolved_database_url)) as db:
+        db.add(UsageLog(endpoint="check", model="fake-model", cost_usd=1.0))
+        db.commit()
+    for what in ("level/2", "solve"):
+        assert ask(client, first["id"], what).status_code == 402
     assert provider.calls == calls

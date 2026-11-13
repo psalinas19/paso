@@ -85,3 +85,47 @@ def test_a_refused_or_truncated_answer_is_an_error_not_a_result(stop_reason):
     provider, _ = provider_with(None, stop_reason)
     with pytest.raises(ProviderError):
         provider.write_hint(PROMPT, "the instruction", None)
+
+
+def test_explaining_and_solving_are_structured_calls_with_their_own_schemas():
+    from app.llm.schema import ExplanationPayload, NotePayload, SolutionPayload, SolvedStep
+
+    explanation = ExplanationPayload(
+        overview="Lineal.",
+        notes=[NotePayload(step_id="s2", note="Restaste 2.")],
+        suspect_step_id=None,
+        corrected_latex="x = 3",
+        corrected_sympy="Eq(x, 3)",
+        next_step="",
+        takeaway="Lo mismo en ambos lados.",
+    )
+    provider, messages = provider_with(explanation)
+    draft = provider.explain(PROMPT, "the instruction", None)
+    assert draft.notes == [("s2", "Restaste 2.")] and draft.corrected_sympy == "Eq(x, 3)"
+    assert draft.usage.endpoint == "explain"
+    assert messages.request["output_format"] is ExplanationPayload
+
+    solved = SolutionPayload(
+        goal="Despejar x.",
+        method="Inversas.",
+        steps=[
+            SolvedStep(
+                id="r1",
+                latex="x = 3",
+                sympy="Eq(x, 3)",
+                kind="equation",
+                relation="result",
+                derives_from=["g1"],
+                why="Dividiendo entre 2.",
+            )
+        ],
+        answer="$x = 3$",
+        check="",
+    )
+    provider, messages = provider_with(solved)
+    image = PreparedImage(data=b"png", media_type="image/png", width=1, height=1)
+    draft = provider.solve(PROMPT, "the instruction", image)
+    assert [(s.id, s.sympy, s.derives_from) for s in draft.steps] == [("r1", "Eq(x, 3)", ["g1"])]
+    assert draft.whys == {"r1": "Dividiendo entre 2."} and draft.usage.endpoint == "solve"
+    assert [b["type"] for b in messages.request["messages"][0]["content"]] == ["image", "text"]
+    assert messages.request["output_format"] is SolutionPayload

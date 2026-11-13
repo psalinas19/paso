@@ -232,3 +232,83 @@ class Hint(BaseModel):
     error_label: str | None = None
     model: str = ""
     prompt_version: str = ""
+
+
+class StepNote(BaseModel):
+    """The model's comment on one step: why it holds, or what went wrong in it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    step_id: str
+    note: str
+
+
+class CorrectedStep(BaseModel):
+    """How the failing step should have read, according to the model.
+
+    Only ever shown after our verifier has looked at it: `verified` says
+    whether it proved the correction follows from the steps before.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    step_id: str
+    latex: str
+    sympy: str | None = None
+    verified: bool
+    detail: str = ""
+
+
+class Explanation(BaseModel):
+    """Level-2 help (SPEC 2.5, 6.4): why each step holds, where it went wrong
+    and how that step should read. Everything here is the model's words except
+    `failing_step_id`/`basis` and `corrected.verified`, which are ours."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = SCHEMA_VERSION
+    overview: str = Field(description="What kind of problem this is and which method applies.")
+    notes: list[StepNote] = Field(default_factory=list)
+    failing_step_id: str | None = None
+    basis: HintBasis = HintBasis.NONE
+    corrected: CorrectedStep | None = None
+    #: The model proposed a correction and the verifier proved it wrong, so it is not shown.
+    correction_rejected: bool = False
+    next_step: str = ""
+    takeaway: str = ""
+    model: str = ""
+    prompt_version: str = ""
+
+
+class SolutionStep(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    step: Step
+    why: str = ""
+    #: What our verifier said about this step of the model's solution.
+    status: VerificationStatus
+    detail: str = ""
+    #: True for the problem data taken from the student's page.
+    given: bool = False
+
+
+class Solution(BaseModel):
+    """Level-3 help (SPEC 6.4): the worked solution, always run through the verifier."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = SCHEMA_VERSION
+    goal: str
+    method: str
+    steps: list[SolutionStep] = Field(default_factory=list)
+    answer: str = ""
+    check: str = ""
+    #: Every symbolic step of the model was proved and none is wrong.
+    verified: bool
+    checked_steps: int = 0
+    unchecked_steps: int = 0
+    wrong_steps: int = 0
+    #: 2 when the first attempt failed verification and the model was asked to fix it.
+    attempts: int = 1
+    model: str = ""
+    prompt_version: str = ""

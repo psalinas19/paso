@@ -79,3 +79,74 @@ class HintPayload(BaseModel):
         description="The hint, in Spanish. Never the corrected step or the final answer. "
         "Empty if there is no mistake."
     )
+
+
+class NotePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    step_id: str = Field(description="Id of the step this comment is about.")
+    note: str = Field(description="One or two sentences, in Spanish.")
+
+
+class ExplanationPayload(BaseModel):
+    """What the model fills in for a level-2 explanation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    overview: str = Field(
+        description="What kind of problem this is, which method applies and why. Spanish."
+    )
+    notes: list[NotePayload] = Field(
+        description="One comment per step that deserves one: the rule it applies and why "
+        "it is valid, or, for the failing step, the mistake and the idea behind it."
+    )
+    suspect_step_id: str | None = Field(
+        description="Only when the verifier found no error: id of an unverifiable step you "
+        "believe is wrong, or null."
+    )
+    corrected_latex: str | None = Field(
+        description="How the failing step should have been written, KaTeX-compatible, or "
+        "null if no step fails."
+    )
+    corrected_sympy: str | None = Field(
+        description="The corrected step in the SymPy dialect, or null."
+    )
+    next_step: str = Field(
+        description="If the development stops before the result: what to do next, without "
+        "doing it. Empty if it is finished."
+    )
+    takeaway: str = Field(description="One sentence worth remembering. Spanish.")
+
+
+class SolvedStep(BaseModel):
+    """One step of the model's own solution. Same shape as a transcribed step,
+    minus what only applies to reading handwriting."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(description="r1, r2, r3...")
+    latex: str = Field(description="The step, KaTeX-compatible.")
+    sympy: str | None = Field(
+        description="The step in the SymPy dialect, or null for a step in words."
+    )
+    kind: StepKind
+    relation: StepRelation
+    derives_from: list[str] = Field(
+        description="Ids of the steps this one comes from: the given ids (g1...) or "
+        "earlier steps of yours."
+    )
+    why: str = Field(description="Why this step: the rule and why it applies. Spanish.")
+
+
+class SolutionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    goal: str = Field(description="What is being asked, in one sentence. Spanish.")
+    method: str = Field(description="Which method you use and why it applies. Spanish.")
+    steps: list[SolvedStep] = Field(
+        description="The solution from the given data to the result, one step per line."
+    )
+    answer: str = Field(description="The final result, with LaTeX between $...$.")
+    check: str = Field(
+        description="How to check the result: substitute it, check units or a limit case."
+    )

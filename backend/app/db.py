@@ -42,6 +42,10 @@ class Check(SQLModel, table=True):
     #: The level-1 hint (a Hint), or null when none was asked for or a later
     #: correction made it stale.
     hint_json: str | None = None
+    #: Level-2 explanation (an Explanation) and level-3 solution (a Solution).
+    #: Both are written for the current steps, so a correction clears them too.
+    explanation_json: str | None = None
+    solution_json: str | None = None
     max_level_shown: int = 1
     model: str
     prompt_version: str
