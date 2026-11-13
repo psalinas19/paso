@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db, type Review } from "../db";
 import { ExportDialog } from "../export/ExportDialog";
-import { loadConfig, postCheck } from "../review/api";
+import { loadConfig, postCheck, postCorrection, postHint, type CheckResponse } from "../review/api";
+import { mergeReview } from "../review/merge";
 import { ReviewPanel, type ReviewState } from "../review/ReviewPanel";
 import { SettingsDialog } from "../review/SettingsDialog";
 import { deletePage, movePage } from "../library/actions";
@@ -86,6 +87,17 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
       setPanel({ kind: "error", message: (error as Error).message });
     }
   };
+  /** Apply the backend's answer to the review on screen and to its copy on the iPad. */
+  const update = async (request: (review: Review) => Promise<CheckResponse>) => {
+    if (panel?.kind !== "result") return;
+    const next = mergeReview(panel.review, await request(panel.review));
+    await db.reviews.put(next);
+    setPanel({ kind: "result", review: next });
+  };
+  const actions = {
+    onCorrect: (stepId: string, latex: string) => update((r) => postCorrection(loadConfig(), r.id, stepId, latex)),
+    onHint: () => update((r) => postHint(loadConfig(), r.id)),
+  };
   const failed = (what: string) => () => onError(`No se pudo ${what}.`);
   /** Run a command on the page at the centre of the screen, then rebuild if it changed the pages. */
   const onPage = (action: (pageId: string) => Promise<unknown>, what: string) => () => {
@@ -138,6 +150,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
         <ReviewPanel
           state={panel}
           notebookId={notebookId}
+          actions={actions}
           onOpen={(opened) => setPanel({ kind: "result", review: opened })}
           onClose={() => setPanel(null)}
         />

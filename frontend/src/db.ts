@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { CheckResponse } from "./review/api";
+import type { CheckResponse, Hint } from "./review/api";
 import type { Stroke } from "./strokes/format";
 
 export interface Semester {
@@ -43,6 +43,11 @@ export interface Review {
   created_at: number;
   recognition: CheckResponse["recognition"];
   verification: CheckResponse["verification"];
+  /** Steps the student retyped. Absent in reviews saved before corrections existed. */
+  corrected?: string[];
+  /** Level-1 hint, once asked for. Cleared when a step is corrected. */
+  hint?: Hint | null;
+  /** Everything this review has cost so far: reading, corrections and hint. */
   cost_usd: number;
   month_spend_usd: number;
   budget_usd: number;

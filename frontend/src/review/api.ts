@@ -30,10 +30,29 @@ export interface UsageSummary {
   checks_this_month: number;
 }
 
+/**
+ * Level-1 help. The two sources never share a field: `verified` is what the
+ * symbolic verifier established; `hint` and the error type are the model's words.
+ */
+export interface Hint {
+  step_id: string | null;
+  basis: "verified" | "model_opinion" | "none";
+  verified: string;
+  hint: string;
+  error_type: string | null;
+  error_label: string | null;
+}
+
+/** A review as it stands now. Every call that changes one returns this. */
 export interface CheckResponse {
   id: string;
+  /** The current steps: as read, with the student's corrections applied. */
   recognition: { steps: Step[]; model: string; warnings: string[] };
   verification: { steps: StepVerification[] };
+  /** Ids of the steps the student retyped. */
+  corrected?: string[];
+  hint?: Hint | null;
+  /** Cost of this call alone. */
   cost_usd: number;
   usage: UsageSummary;
 }
@@ -113,4 +132,16 @@ export function postCheck(config: BackendConfig, image: Blob, subject: string, s
   body.append("subject", subject);
   body.append("strokes", JSON.stringify(strokes));
   return call<CheckResponse>(config, "/api/check", { method: "POST", body });
+}
+
+/** Fix a misread step: the backend restructures the retyped LaTeX and verifies everything again. */
+export function postCorrection(config: BackendConfig, checkId: string, stepId: string, latex: string): Promise<CheckResponse> {
+  const body = new FormData();
+  body.append("latex", latex);
+  return call<CheckResponse>(config, `/api/checks/${encodeURIComponent(checkId)}/steps/${encodeURIComponent(stepId)}`, { method: "POST", body });
+}
+
+/** Ask for the level-1 hint of a review. Asking twice does not pay twice. */
+export function postHint(config: BackendConfig, checkId: string): Promise<CheckResponse> {
+  return call<CheckResponse>(config, `/api/checks/${encodeURIComponent(checkId)}/hint`, { method: "POST" });
 }

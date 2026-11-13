@@ -360,6 +360,96 @@ body {
   color: #b54708;
 }
 
+.step.hinted {
+  box-shadow: inset 3px 0 0 #1d4ed8;
+  padding-left: 6px;
+}
+
+.review button.link {
+  min-height: 36px;
+  padding: 0;
+  color: #1d4ed8;
+  font-size: 14px;
+  text-decoration: underline;
+}
+
+.review button.primary {
+  padding: 0 14px;
+  background: #1f2a44;
+  color: #fff;
+  font-weight: 600;
+}
+
+.review button:disabled {
+  opacity: 0.55;
+}
+
+.editor label {
+  display: block;
+  font-size: 14px;
+}
+
+.editor textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 6px 0;
+  padding: 8px;
+  border: 1px solid #c7cedb;
+  border-radius: 8px;
+  /* 16px or Safari zooms the page when the field takes focus. */
+  font: 16px ui-monospace, Menlo, monospace;
+}
+
+.editor .row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.hint {
+  margin: 12px 0;
+}
+
+.hint h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.hint h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.hint p {
+  margin: 4px 0 0;
+}
+
+.hint .proved,
+.hint .opinion {
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+.hint .proved {
+  background: #eef8f1;
+}
+
+.hint .proved h4 {
+  color: #16803c;
+}
+
+.hint .opinion {
+  margin-top: 8px;
+  border: 1px dashed #b54708;
+  background: #fffaf2;
+}
+
+.hint .opinion h4 {
+  color: #b54708;
+}
+
 .latex {
   overflow-x: auto;
   overflow-y: hidden;
