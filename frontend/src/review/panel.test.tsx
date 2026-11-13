@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 import type { Review } from "../db";
 import type { CheckResponse, Step } from "./api";
-import { mergeReview, splitMath, summarise } from "./merge";
+import { describeTiming, mergeReview, splitMath, summarise, timingOf } from "./merge";
 import { Result } from "./ReviewPanel";
 
 const step = (id: string, latex: string, confidence = 0.95): Step => ({
@@ -205,4 +205,21 @@ test("a solution carries the verifier's badge, or a warning when it did not pass
   expect(bad).toContain("Solución no verificada: revísala con cuidado");
   expect(bad).not.toContain("Solución verificada simbólicamente");
   expect(bad).toContain("Se comprobaron 1 de 2 pasos. Uno tiene un error que el modelo no corrigió.");
+});
+
+test("a doubtful reading can be confirmed as it stands", () => {
+  expect(text(review)).toContain("Sí, está bien leído");
+  expect(text(review, false)).not.toContain("Sí, está bien leído"); // not without a backend to tell
+});
+
+test("the panel says where the wait went", () => {
+  const response = { model_seconds: 7.5, verify_seconds: 0.5 } as CheckResponse;
+  const timing = timingOf(response, 9)!;
+  expect(describeTiming(timing)).toBe("Tardó 9.0 s: 7.5 s el modelo, 0.5 s comprobar, 1.0 s la conexión.");
+  expect(describeTiming({ total: 31.4, model: 28, verify: 2, })).toContain("Tardó 31 s: 28 s el modelo");
+  expect(timingOf(response)).toBeUndefined();
+  expect(text({ ...review, timing })).toContain("Tardó 9.0 s");
+  // A later free answer keeps the last real measurement instead of erasing it.
+  const merged = mergeReview({ ...review, timing }, { ...response, recognition: review.recognition, verification: review.verification, cost_usd: 0, usage: { month_spend_usd: 0, budget_usd: 20, checks_this_month: 1 }, id: "abc" });
+  expect(merged.timing).toEqual(timing);
 });

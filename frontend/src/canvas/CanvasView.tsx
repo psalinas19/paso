@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { db, type Review } from "../db";
 import { ExportDialog } from "../export/ExportDialog";
 import { loadConfig, postCheck, postCorrection, postExplain, postHint, postSolve, type CheckResponse } from "../review/api";
-import { mergeReview } from "../review/merge";
+import { mergeReview, timingOf } from "../review/merge";
 import { ReviewPanel, type ReviewState } from "../review/ReviewPanel";
 import { SettingsDialog } from "../review/SettingsDialog";
 import { deletePage, movePage } from "../library/actions";
@@ -84,6 +84,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
       const notebook = await db.notebooks.get(notebookId);
       const subject = notebook && (await db.subjects.get(notebook.subject_id));
       const slug = !subject || subject.template === "generic" ? "general" : subject.template;
+      const started = performance.now();
       const result = await postCheck(loadConfig(), await snapshot.image, slug, snapshot.strokes);
       const saved: Review = {
         id: result.id,
@@ -94,6 +95,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
         recognition: result.recognition,
         verification: result.verification,
         cost_usd: result.cost_usd,
+        timing: timingOf(result, (performance.now() - started) / 1000),
         month_spend_usd: result.usage.month_spend_usd,
         budget_usd: result.usage.budget_usd,
       };
@@ -106,7 +108,9 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   /** Apply the backend's answer to the review on screen and to its copy on the iPad. */
   const update = async (request: (review: Review) => Promise<CheckResponse>) => {
     if (panel?.kind !== "result") return;
-    const next = mergeReview(panel.review, await request(panel.review));
+    const started = performance.now();
+    const response = await request(panel.review);
+    const next = mergeReview(panel.review, response, (performance.now() - started) / 1000);
     await db.reviews.put(next);
     setPanel({ kind: "result", review: next });
   };

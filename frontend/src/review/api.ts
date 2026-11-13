@@ -87,6 +87,9 @@ export interface CheckResponse {
   solution?: Solution | null;
   /** Cost of this call alone. */
   cost_usd: number;
+  /** Seconds this call spent waiting for the model and checking the steps. */
+  model_seconds?: number;
+  verify_seconds?: number;
   usage: UsageSummary;
 }
 

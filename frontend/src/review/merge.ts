@@ -6,9 +6,10 @@ import type { CheckResponse } from "./api";
  * the iPad. The answer carries the review's whole current state, so it replaces
  * what was there; only the cost adds up.
  */
-export function mergeReview(review: Review, response: CheckResponse): Review {
+export function mergeReview(review: Review, response: CheckResponse, totalSeconds?: number): Review {
   return {
     ...review,
+    timing: timingOf(response, totalSeconds) ?? review.timing,
     recognition: response.recognition,
     verification: response.verification,
     corrected: response.corrected ?? [],
@@ -47,4 +48,17 @@ export function summarise(review: Pick<Review, "recognition" | "verification">):
   const rest = unchecked ? ` ${unchecked === 1 ? "Un paso no se pudo" : `${unchecked} pasos no se pudieron`} comprobar con matemáticas.` : "";
   if (!proved) return { tone: "idle", text: "No pude comprobar ningún paso con matemáticas." };
   return { tone: "ok", text: `Comprobé ${steps(proved)} y ${proved === 1 ? "se sigue" : "todos se siguen"} del anterior.${rest}` };
+}
+
+/** How long a request took and where, or undefined when nothing was measured or nothing was called. */
+export function timingOf(response: CheckResponse, totalSeconds?: number): Review["timing"] {
+  if (totalSeconds === undefined) return undefined;
+  return { total: totalSeconds, model: response.model_seconds ?? 0, verify: response.verify_seconds ?? 0 };
+}
+
+/** "Tardó 9 s: 7 s el modelo, 1 s comprobar, 1 s la conexión." */
+export function describeTiming(timing: NonNullable<Review["timing"]>): string {
+  const s = (n: number) => `${n < 10 ? n.toFixed(1) : Math.round(n)} s`;
+  const network = Math.max(0, timing.total - timing.model - timing.verify);
+  return `Tardó ${s(timing.total)}: ${s(timing.model)} el modelo, ${s(timing.verify)} comprobar, ${s(network)} la conexión.`;
 }

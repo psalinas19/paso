@@ -50,6 +50,8 @@ export interface Review {
   /** Level-2 explanation and level-3 solution, once asked for. Cleared with the hint. */
   explanation?: Explanation | null;
   solution?: Solution | null;
+  /** Where the time of the last request went, in seconds; the rest of the wait was network. */
+  timing?: { total: number; model: number; verify: number };
   /** Everything this review has cost so far: reading, corrections and hint. */
   cost_usd: number;
   month_spend_usd: number;

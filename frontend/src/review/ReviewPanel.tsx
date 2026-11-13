@@ -4,7 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { db, type Review } from "../db";
 import { LOW_CONFIDENCE, type Explanation, type Hint, type Solution, type Step, type StepStatus } from "./api";
-import { splitMath, summarise } from "./merge";
+import { describeTiming, splitMath, summarise } from "./merge";
 
 export type ReviewState =
   | { kind: "loading"; since: number }
@@ -273,7 +273,14 @@ export function Result({ review, actions }: { review: Review; actions?: ReviewAc
                   <>
                     {step.legible ? <Latex source={step.latex} /> : <p className="muted">(ilegible)</p>}
                     {step.confidence < LOW_CONFIDENCE && (
-                      <p className="doubt">Lectura dudosa: confirma que esto es lo que escribiste.</p>
+                      <p className="doubt">
+                        Lectura dudosa: confirma que esto es lo que escribiste.{" "}
+                        {actions && (
+                          <button type="button" className="link" onClick={() => void actions.onCorrect(step.id, step.latex).catch(() => {})}>
+                            Sí, está bien leído
+                          </button>
+                        )}
+                      </p>
                     )}
                     {corrected.has(step.id) && <p className="muted">Corregido por ti.</p>}
                     {hinted && <p className="muted">La ayuda habla de este paso.</p>}
@@ -302,6 +309,7 @@ export function Result({ review, actions }: { review: Review; actions?: ReviewAc
         Esta revisión: {review.cost_usd.toFixed(3)} USD · Mes: {review.month_spend_usd.toFixed(2)} de{" "}
         {review.budget_usd.toFixed(2)} USD
       </p>
+      {review.timing && <p className="muted cost">{describeTiming(review.timing)}</p>}
     </>
   );
 }

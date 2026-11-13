@@ -129,6 +129,8 @@ export class NotebookCanvas {
   private renderTimer = 0;
   private renderFallback = 0;
   private renderCost = 0; // ms the last full render took
+  private overlayFrame = 0;
+  private predicted: Point[] = [];
 
   constructor(
     private host: HTMLDivElement,
@@ -168,6 +170,7 @@ export class NotebookCanvas {
     clearTimeout(this.renderFallback);
     clearTimeout(this.holdTimer);
     cancelAnimationFrame(this.glideFrame);
+    cancelAnimationFrame(this.overlayFrame);
     const h = this.host;
     h.removeEventListener("pointerdown", this.down);
     h.removeEventListener("pointermove", this.move);
@@ -425,8 +428,27 @@ export class NotebookCanvas {
     }
   }
 
+  /**
+   * Redraw the overlay on the next frame. The Pencil reports about twice per
+   * frame; drawing on each report did the work twice for a picture the screen
+   * shows once, and the second drawing could push the first frame late. One
+   * drawing per frame, with every point that has arrived by then, is never
+   * later on screen and leaves the frame time for the ink itself.
+   */
+  private scheduleOverlay(predicted: Point[] = []) {
+    this.predicted = predicted;
+    if (this.overlayFrame) return;
+    this.overlayFrame = requestAnimationFrame(() => {
+      this.overlayFrame = 0;
+      this.drawOverlay(this.predicted);
+    });
+  }
+
   /** Everything transient: the stroke being written, the lasso, the selection. */
   private drawOverlay(predicted: Point[] = []) {
+    // Drawing now makes any frame that was waiting redundant.
+    cancelAnimationFrame(this.overlayFrame);
+    this.overlayFrame = 0;
     const ctx = this.octx;
     const dpr = window.devicePixelRatio || 1;
     const { s, tx, ty } = this.view;
@@ -438,7 +460,10 @@ export class NotebookCanvas {
     if (c?.mode === "ink" && (this.tool.kind === "pen" || this.tool.kind === "highlighter")) {
       onPage(c.page);
       const points = c.shape ? shapePoints(c.shape) : predicted.length ? c.points.concat(predicted) : c.points;
-      const outline = outlinePoints(points, this.tool.size, !!c.shape, thinningOf(this.tool.kind));
+      // Drawn as a finished stroke even while writing: the line then reaches the
+      // very last sample instead of trailing a little behind the pen, and it does
+      // not change shape at the moment the pen lifts.
+      const outline = outlinePoints(points, this.tool.size, true, thinningOf(this.tool.kind));
       paint(ctx, new Path2D(svgPath(outline)), this.tool.color, this.tool.kind);
     }
     if (c?.mode === "lasso") {
@@ -679,7 +704,7 @@ export class NotebookCanvas {
     if (c.mode === "ink") {
       if (c.shape) {
         c.shape = adjustShape(c.base!, c.snapFrom, this.local(e, c.page));
-        return this.drawOverlay();
+        return this.scheduleOverlay();
       }
       // The Pencil reports faster than the screen refreshes; coalesced events are the
       // samples in between, predicted ones cut perceived latency and are never stored.
@@ -691,12 +716,12 @@ export class NotebookCanvas {
         c.holdAnchor = at;
         this.armHold();
       }
-      return this.drawOverlay((e.getPredictedEvents?.() ?? []).map(point));
+      return this.scheduleOverlay((e.getPredictedEvents?.() ?? []).map(point));
     }
     if (c.mode === "erase") this.eraseTo(e);
     else if (c.mode === "lasso") c.points.push(this.local(e, c.page));
     else c.now = this.local(e, this.selection!.page);
-    this.drawOverlay();
+    this.scheduleOverlay();
   };
 
   private moveTouch(e: PointerEvent) {

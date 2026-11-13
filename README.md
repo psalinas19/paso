@@ -125,7 +125,7 @@ py -3.12 -m uv run ruff format .
 
 Una materia es un archivo YAML en `backend/app/subjects/`. Agregar una **no requiere tocar código** (SPEC §12.5): copia `ed.yaml`, cámbiale el `slug`, la notación, las estrategias de verificación y la taxonomía de errores.
 
-Hoy existen `ed` (Ecuaciones Diferenciales) y `circuitos1` (Circuitos Eléctricos I, solo DC).
+Hoy existen `general`, `ed` (Ecuaciones Diferenciales) y `circuitos1` (Circuitos Eléctricos I, solo DC). `general` y `ed` entienden la transformada de Laplace y su inversa.
 
 ## Costos
 
@@ -227,6 +227,27 @@ py -3.12 -m uv run python -m app.case confirm ed-01
 ```
 
 `confirm` revisa que todo esté completo, te muestra qué dice hoy el verificador de cada paso y solo entonces lo mete al banco. Si corregiste pasos desde la libreta, el borrador ya trae tu versión. Detalles en [backend/eval/README.md](backend/eval/README.md).
+
+### Si tarda mucho
+
+Debajo del costo, el panel dice en qué se fue la espera: «Tardó 9 s: 7 s el modelo, 1 s comprobar, 1 s la conexión».
+
+- Casi todo suele ser **el modelo**. Se puede pedir que piense menos: en `backend\.env` pon `ANTHROPIC_EFFORT=medium` (o `low`) y reinicia el backend. Responde más rápido y cuesta menos, pero puede leer o explicar peor; no está medido.
+- Si lo que pesa es **la conexión**, es el túnel o el wifi.
+
+### Si la app dice que hay un error y tú crees que no
+
+Es el fallo más grave que puede tener. Mándame la revisión tal cual:
+
+```powershell
+py -3.12 -m uv run python -m app.case list
+```
+
+```powershell
+py -3.12 -m uv run python -m app.case show a1b2c3d4
+```
+
+El segundo comando imprime qué se leyó y qué dijo el verificador de cada paso. No incluye la imagen.
 
 ### Lo que conviene saber
 
