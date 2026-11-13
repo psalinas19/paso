@@ -11,6 +11,11 @@ truth.json is written by hand, in the dialect of ADR 0002. That is the boring
 work of phase 0 and there is no shortcut: without annotated truth there is
 nothing to measure against.
 
+`python -m app.case` drafts a case from a stored review. The draft is saved as
+truth.draft.json and is *not* part of the bank until it has been read, fixed
+and confirmed: scoring the model against its own unreviewed reading would
+measure nothing (ADR 0007).
+
 The bank grows every semester with the new subjects (SPEC 10).
 """
 
@@ -25,6 +30,9 @@ from app.config import EVAL_CASES_DIR
 from app.schemas import Step, StepKind, StepRelation, VerificationStatus
 
 IMAGE_NAMES = ("image.jpg", "image.jpeg", "image.png", "image.heic")
+TRUTH_NAME = "truth.json"
+#: A proposed truth nobody has confirmed yet. Never loaded as a case.
+DRAFT_NAME = "truth.draft.json"
 
 
 class SeededError(BaseModel):
@@ -124,11 +132,26 @@ def load_case(directory: Path) -> EvalCase:
     return EvalCase(meta=meta, truth=truth, image_path=image_path)
 
 
+def is_pending(directory: Path) -> bool:
+    """A drafted case still waiting for a person to confirm its truth."""
+    return (directory / DRAFT_NAME).is_file() and not (directory / TRUTH_NAME).is_file()
+
+
 def load_cases(cases_dir: Path | None = None) -> list[EvalCase]:
     base = cases_dir if cases_dir is not None else EVAL_CASES_DIR
     if not base.is_dir():
         return []
     cases = []
     for directory in sorted(p for p in base.iterdir() if p.is_dir()):
+        if is_pending(directory):
+            continue
         cases.append(load_case(directory))
     return cases
+
+
+def pending_cases(cases_dir: Path | None = None) -> list[str]:
+    """Ids of drafted cases that are not measured yet because nobody confirmed them."""
+    base = cases_dir if cases_dir is not None else EVAL_CASES_DIR
+    if not base.is_dir():
+        return []
+    return sorted(p.name for p in base.iterdir() if p.is_dir() and is_pending(p))

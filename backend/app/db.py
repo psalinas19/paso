@@ -10,10 +10,12 @@ from datetime import UTC, datetime
 
 from alembic import command
 from alembic.config import Config
+from pydantic import TypeAdapter
 from sqlalchemy import Engine, func
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 from app.config import MIGRATIONS_DIR
+from app.schemas import RecognitionResult, Step
 
 
 def _now() -> datetime:
@@ -29,8 +31,17 @@ class Check(SQLModel, table=True):
     #: Vector strokes of the selection, so old reviews can be re-recognised with
     #: better models later (SPEC 12.3). Null when the client did not send them.
     strokes_json: str | None = None
+    #: What the model read, never rewritten: the reading itself is what the
+    #: test bank measures.
     steps_json: str
+    #: The steps after the student fixed misread ones (a JSON list of Step), or
+    #: null while nothing was corrected. `verification_json` always describes
+    #: the current steps.
+    corrected_steps_json: str | None = None
     verification_json: str
+    #: The level-1 hint (a Hint), or null when none was asked for or a later
+    #: correction made it stale.
+    hint_json: str | None = None
     max_level_shown: int = 1
     model: str
     prompt_version: str
@@ -47,6 +58,23 @@ class UsageLog(SQLModel, table=True):
     output_tokens: int = 0
     cost_usd: float = 0.0
     created_at: datetime = Field(default_factory=_now, index=True)
+
+
+_STEPS = TypeAdapter(list[Step])
+
+
+def current_steps(check: Check) -> tuple[list[Step], list[str]]:
+    """The steps as they stand now, and the ids of those the student corrected."""
+    original = RecognitionResult.model_validate_json(check.steps_json).steps
+    if not check.corrected_steps_json:
+        return original, []
+    steps = _STEPS.validate_json(check.corrected_steps_json)
+    read = {s.id: s.latex for s in original}
+    return steps, [s.id for s in steps if read.get(s.id) != s.latex]
+
+
+def dump_steps(steps: list[Step]) -> str:
+    return _STEPS.dump_json(steps).decode()
 
 
 def make_engine(database_url: str) -> Engine:

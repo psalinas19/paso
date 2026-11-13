@@ -22,7 +22,7 @@ from rich.table import Table
 
 from app.cli_common import MissingApiKeyError, build_provider
 from app.config import EVAL_RESULTS_DIR, get_settings
-from app.evaluation.cases import EvalCase, MalformedCaseError, load_cases
+from app.evaluation.cases import EvalCase, MalformedCaseError, load_cases, pending_cases
 from app.evaluation.scoring import CaseScore, EvalSummary, score_case, summarise
 from app.llm.base import LLMProvider, ProviderError
 from app.recognition.service import recognize
@@ -242,6 +242,13 @@ def main(argv: list[str] | None = None) -> int:
     except MalformedCaseError as exc:
         console.print(f"[red]{exc}[/red]")
         return 2
+
+    pending = pending_cases(args.cases_dir)
+    if pending:
+        console.print(
+            f"[yellow]{len(pending)} caso(s) en borrador no se miden: {', '.join(pending)}. "
+            "Revísalos y confírmalos con `python -m app.case confirm <id>`.[/yellow]"
+        )
 
     if args.case:
         cases = [c for c in cases if c.id == args.case]
