@@ -94,22 +94,4 @@ export async function shareFile(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-const safeName = (name: string) => name.replace(/[\\/:*?"<>|]+/g, "-").trim() || "cuaderno";
-
-export async function exportNotebookPdf(notebookId: string) {
-  const data = await collectNotebook(notebookId);
-  await shareFile(await toPdf(data.pages), `${safeName(data.notebook.title)}.pdf`);
-}
-
-export async function exportPagePdf(notebookId: string, pageId: string) {
-  const data = await collectNotebook(notebookId);
-  const index = data.pages.findIndex((p) => p.page.id === pageId);
-  if (index < 0) return;
-  await shareFile(await toPdf([data.pages[index]]), `${safeName(data.notebook.title)} - página ${index + 1}.pdf`);
-}
-
-export async function exportNotebookJson(notebookId: string) {
-  const data = await collectNotebook(notebookId);
-  const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
-  await shareFile(blob, `${safeName(data.notebook.title)}.paso.json`);
-}
+export const safeName = (name: string) => name.replace(/[\/:*?"<>|]+/g, "-").trim() || "cuaderno";

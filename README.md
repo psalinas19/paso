@@ -37,11 +37,11 @@ El iPad exige HTTPS para instalar la app y trabajar sin conexión, así que se p
 
 Solo se suben los archivos de la app. **Las notas nunca salen del iPad**: viven en el almacenamiento de Safari para esa dirección. Por eso la dirección no debe cambiar: en otra dirección la app empieza vacía.
 
-Tras publicar una versión nueva, el iPad la recibe al abrir la app con internet; aparece en la siguiente apertura.
+Tras publicar una versión nueva, el iPad la descarga al abrir la app con internet y la usa a partir de la siguiente vez que la abras (ciérrala del todo desde el selector de apps).
 
 ### Respaldo de las notas
 
-En un cuaderno, botón **⋯** → *Exportar el cuaderno a PDF* o *a JSON (respaldo)*. Se abre la hoja de compartir de iOS; desde ahí se guarda en Archivos o Nextcloud. El formato del JSON está en [docs/stroke-format.md](docs/stroke-format.md).
+En un cuaderno, botón **⋯** → *Exportar…*: eliges qué páginas van al PDF, o sacas el cuaderno completo como JSON (respaldo). Se abre la hoja de compartir de iOS; desde ahí se guarda en Archivos o Nextcloud. El formato del JSON está en [docs/stroke-format.md](docs/stroke-format.md).
 
 Mientras no exista el respaldo automático al servidor (Fase 5), **exportar es la única copia fuera del iPad**. Safari puede borrar los datos de una app web que lleva semanas sin abrirse.
 

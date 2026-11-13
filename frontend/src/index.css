@@ -21,39 +21,21 @@ body {
   touch-action: none;
 }
 
-/* The document: pages stacked in page units; NotebookCanvas moves and scales it. */
-.doc {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 612px;
-  transform-origin: 0 0;
-  will-change: transform;
-}
-
-.sheet {
-  position: absolute;
-  left: 0;
-  width: 612px;
-  height: 792px;
-  background: #fff;
-  box-shadow: 0 1px 4px rgb(0 0 0 / 0.18);
-}
-
-.sheet canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-/* Stroke being written, lasso and selection. Screen-sized, so always sharp. */
+/* Two screen-sized canvases, drawn at device resolution so ink is always sharp:
+   .ink holds the pages and finished strokes, .overlay the stroke being written,
+   the lasso and the selection. */
+.ink,
 .overlay {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+.ink {
+  /* Moved and scaled for a moment during pan and zoom, until it is redrawn. */
+  transform-origin: 0 0;
 }
 
 .toolbar {
@@ -157,12 +139,103 @@ body {
   color: #b42318;
 }
 
+.export {
+  width: min(92vw, 420px);
+  max-height: 86dvh;
+  box-sizing: border-box;
+  padding: 20px;
+  border: 0;
+  border-radius: 16px;
+  color: #1f2a44;
+  box-shadow: 0 10px 40px rgb(0 0 0 / 0.25);
+}
+
+.export::backdrop {
+  background: rgb(20 26 40 / 0.35);
+}
+
+.export h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.export ul {
+  max-height: 40dvh;
+  margin: 4px 0 12px;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border-block: 1px solid #edf0f5;
+}
+
+.export label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 16px;
+}
+
+.export input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  accent-color: #1f2a44;
+}
+
+.export .muted {
+  color: #667085;
+}
+
+.export .row {
+  display: flex;
+  gap: 4px;
+}
+
+.export button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #e6ebf5;
+  color: #1f2a44;
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.export > button {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.export button.primary {
+  background: #1f2a44;
+  color: #fff;
+}
+
+.export button.quiet {
+  background: transparent;
+  color: #475467;
+}
+
+.export button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* --- library ------------------------------------------------------------ */
 
+/* The library is an ordinary scrolling page. A fixed, self-scrolling panel fights
+   the iOS keyboard: the page jumps and text fields glitch while typing. */
+html:has(.library),
+html:has(.library) body {
+  height: auto;
+  overflow: auto;
+}
+
 .library {
-  position: fixed;
-  inset: 0;
-  overflow-y: auto;
+  min-height: 100dvh;
   box-sizing: border-box;
   padding: calc(24px + env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) 48px
     max(24px, env(safe-area-inset-left));

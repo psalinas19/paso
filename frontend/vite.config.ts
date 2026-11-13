@@ -8,7 +8,10 @@ export default defineConfig({
     react(),
     // Precaches the whole app shell so the installed PWA opens in airplane mode.
     VitePWA({
-      registerType: "autoUpdate",
+      // "prompt" and we never prompt: a new version waits until the app is closed and
+      // takes over on the next launch. "autoUpdate" reloads the page mid-use, which
+      // would interrupt writing or wipe a half-typed name.
+      registerType: "prompt",
       includeAssets: ["apple-touch-icon.png"],
       manifest: {
         name: "Paso",

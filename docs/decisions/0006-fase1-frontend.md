@@ -11,9 +11,11 @@ La Fase 1 (SPEC §10) entrega la libreta: una PWA para iPad que funciona sin con
 
 **El lienzo es código imperativo, no estado de React.** `NotebookCanvas` es una clase que maneja punteros, tinta, zoom y herramientas directamente sobre el DOM. React solo dibuja la barra y la biblioteca. Pasar cada evento del lápiz por el estado de React provocaría un re-render por evento y añadiría latencia justo donde más se nota.
 
-**Dos capas de dibujo.** Cada página visible tiene un canvas con los trazos terminados; encima hay un único canvas del tamaño de la pantalla para lo transitorio (trazo en curso, lazo, selección). Escribir un trazo nunca redibuja la página.
+**Dos capas del tamaño de la pantalla.** Un canvas dibuja las páginas visibles y los trazos terminados; otro encima, lo transitorio (trazo en curso, lazo, selección). Ambos miden lo que la pantalla en píxeles reales. Escribir un trazo solo pinta ese trazo.
 
-**Zoom por transformación, nitidez después.** Mover y hacer zoom solo cambia una transformación CSS del documento. Los canvas se vuelven a dibujar a la resolución nueva 120 ms después de que el gesto termina. El tope es 4 píxeles por unidad de página, por el límite de memoria de canvas de Safari; más allá la tinta se estira.
+**La tinta siempre se dibuja como vectores a resolución de pantalla.** Al mover o hacer zoom, el canvas ya dibujado se desplaza y escala con una transformación CSS para seguir al dedo al instante, y enseguida se redibuja para la vista nueva: al siguiente cuadro si dibujar es barato (≤ 8 ms), o en cuanto el gesto hace una pausa si la página está muy llena. Solo se dibujan los trazos que caen en pantalla.
+
+La primera versión tenía un canvas por página, escalado con una transformación CSS. Se descartó tras probar en el iPad: Safari pintaba esos canvas a la resolución del diseño y luego los estiraba, así que la letra se veía borrosa al terminar cada trazo y peor con zoom, y además había un tope de resolución por el límite de memoria de canvas.
 
 **Coordenadas en puntos PDF.** La página mide 612 × 792 unidades (carta). Los trazos no dependen del zoom ni del dispositivo, y exportar a PDF no necesita conversión. Formato en [stroke-format.md](../stroke-format.md).
 
@@ -27,16 +29,21 @@ La Fase 1 (SPEC §10) entrega la libreta: una PWA para iPad que funciona sin con
 
 **PDF vectorial con jsPDF.** Cada trazo se exporta como el mismo contorno relleno que se ve en pantalla. La librería se carga solo al exportar y queda en la caché offline.
 
+**Las páginas crecen solas.** Cuando la última página recibe tinta se crea otra en blanco debajo. La exportación parte de las páginas con contenido, así que la página en blanco del final no sale en el PDF.
+
+**Las versiones nuevas entran al reabrir la app.** El service worker nuevo espera a que la app se cierre; recargar en caliente interrumpía la escritura o borraba un nombre a medio teclear.
+
 **Despliegue: archivos estáticos en Cloudflare.** Solo se sube `dist/`; no hay código de servidor. Se eligió una dirección fija porque IndexedDB está ligado al origen: si la dirección cambia, la app instalada empieza vacía.
 
 ## Limitaciones conocidas
 
-- **El doble toque del Apple Pencil no existe para la web.** Safari no lo expone. El borrador es de un solo uso desde la barra (SPEC §6.1).
+- **El doble toque del Apple Pencil no existe para la web.** Safari no lo expone. El borrador es de un solo uso, desde la barra o con doble toque de un dedo (SPEC §6.1).
 - El historial de deshacer vive en memoria: se pierde al cerrar el cuaderno o reordenar páginas.
 - Una selección no se puede mover a otra página.
 - Los diálogos de renombrar y confirmar borrado son los nativos del navegador.
 - La materia guarda qué plantilla usa, pero la configuración completa (taxonomía, estrategias) se conecta en la Fase 2.
 - Los trazos de una página visitada quedan en memoria mientras el cuaderno está abierto.
+- En páginas muy llenas, la tinta puede verse estirada durante un gesto de zoom hasta que el dedo hace una pausa.
 
 ## Consecuencias
 

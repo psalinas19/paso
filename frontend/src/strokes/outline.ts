@@ -39,10 +39,11 @@ export function outlinePoints(points: Point[], size: number, done = true, thinni
   return getStroke(densify(points), {
     size,
     thinning,
-    smoothing: 0.5,
-    // 0 on purpose: streamline drags each point toward the previous one, which
-    // cuts ~25% off every corner when a fast stroke leaves samples far apart.
-    streamline: 0,
+    smoothing: 0.6,
+    // Streamline drags each point toward the previous one to calm hand tremor. It is
+    // only safe because densify() runs first: on far-apart samples it used to cut
+    // ~25% off every corner of a fast stroke.
+    streamline: 0.2,
     simulatePressure: false,
     last: done,
   });

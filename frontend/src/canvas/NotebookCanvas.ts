@@ -20,14 +20,12 @@ export interface CanvasEvents {
   onState(state: { canUndo: boolean; canRedo: boolean; hasSelection: boolean }): void;
   /** The one-shot eraser removed something and the pen lifted: go back to the pen. */
   onEraseEnd(): void;
+  /** Two quick finger taps: the on-screen stand-in for the Pencil's double tap. */
+  onDoubleTap(): void;
 }
 
 const GAP = 16; // between pages, in page units
 const PITCH = PAGE_H + GAP;
-// Canvas pixels per page unit. 2448x3168 per page keeps a few visible pages well
-// inside iOS Safari's canvas memory budget.
-// shortcut: beyond this zoom the ink is stretched, not re-rendered; switch to tiles if deep zoom matters.
-const MAX_RASTER = 4;
 /** A touch this soon after the pen is a resting palm, not a gesture. */
 const PALM_MS = 400;
 /** Holding the pen still this long snaps the stroke to a shape. */
@@ -45,10 +43,6 @@ interface Drawn {
 
 interface PageState {
   page: Page;
-  el: HTMLDivElement;
-  canvas: HTMLCanvasElement | null;
-  ctx: CanvasRenderingContext2D | null;
-  raster: number;
   drawn: Drawn[];
   loaded: boolean;
 }
@@ -89,8 +83,6 @@ function paint(ctx: CanvasRenderingContext2D, path: Path2D, color: string, tool:
 }
 
 function drawBackground(ctx: CanvasRenderingContext2D, background: Page["background"]) {
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, PAGE_W, PAGE_H);
   ctx.beginPath();
   for (const [x1, y1, x2, y2] of backgroundLines(background)) {
     ctx.moveTo(x1, y1);
@@ -115,18 +107,26 @@ export class NotebookCanvas {
   private velocity: XY = [0, 0]; // px per ms, for the glide after a flick
   private lastMove = 0;
   private glideFrame = 0;
-  private rasterTimer = 0;
   private holdTimer = 0;
   private disposed = false;
+  private ictx: CanvasRenderingContext2D;
   private octx: CanvasRenderingContext2D;
+  private rendered: View = this.view; // the view the ink canvas was last drawn for
+  private renderFrame = 0;
+  private renderTimer = 0;
+  private renderFallback = 0;
+  private renderCost = 0; // ms the last full render took
+  private taps = new Map<number, { at: XY; t: number }>(); // finger touches that may still be taps
+  private lastTap: { at: XY; t: number } | null = null;
 
   constructor(
     private host: HTMLDivElement,
-    private doc: HTMLDivElement,
+    private ink: HTMLCanvasElement,
     private overlay: HTMLCanvasElement,
     private notebookId: string,
     private events: CanvasEvents,
   ) {
+    this.ictx = ink.getContext("2d")!;
     this.octx = overlay.getContext("2d")!;
     host.addEventListener("pointerdown", this.down);
     host.addEventListener("pointermove", this.move);
@@ -136,11 +136,11 @@ export class NotebookCanvas {
     host.addEventListener("contextmenu", this.prevent);
     host.addEventListener("gesturestart", this.prevent); // Safari's own pinch
     window.addEventListener("resize", this.resize);
-    this.sizeOverlay();
+    this.sizeCanvases();
     loadPages(notebookId).then(
       (pages) => {
         if (this.disposed) return;
-        for (const page of pages) this.pages.push(this.makePage(page, this.pages.length));
+        for (const page of pages) this.pages.push({ page, drawn: [], loaded: false });
         this.applyView(fitWidth(host.clientWidth, host.clientHeight));
       },
       () => events.onError("No se pudieron cargar las páginas de este cuaderno."),
@@ -149,7 +149,9 @@ export class NotebookCanvas {
 
   destroy() {
     this.disposed = true;
-    clearTimeout(this.rasterTimer);
+    clearTimeout(this.renderTimer);
+    cancelAnimationFrame(this.renderFrame);
+    clearTimeout(this.renderFallback);
     clearTimeout(this.holdTimer);
     cancelAnimationFrame(this.glideFrame);
     const h = this.host;
@@ -161,7 +163,6 @@ export class NotebookCanvas {
     h.removeEventListener("contextmenu", this.prevent);
     h.removeEventListener("gesturestart", this.prevent);
     window.removeEventListener("resize", this.resize);
-    this.doc.replaceChildren();
   }
 
   // --- commands from the toolbar -------------------------------------------
@@ -196,21 +197,6 @@ export class NotebookCanvas {
     this.commit({ before, after: [] });
   }
 
-  addPage() {
-    const last = this.pages[this.pages.length - 1];
-    if (!last) return;
-    const page: Page = {
-      id: crypto.randomUUID(),
-      notebook_id: this.notebookId,
-      position: last.page.position + 1,
-      background: last.page.background,
-    };
-    db.pages.add(page).catch(() => this.events.onError("No se pudo guardar la página nueva."));
-    this.pages.push(this.makePage(page, this.pages.length));
-    // Bring the new page to the top of the screen.
-    this.applyView({ ...this.view, ty: 24 - (this.pages.length - 1) * PITCH * this.view.s });
-  }
-
   /** Grid -> ruled -> blank, for the page at the centre of the screen. */
   cycleBackground() {
     const p = this.pages[this.pageAt(toPage(this.view, 0, this.host.clientHeight / 2)[1])];
@@ -218,7 +204,7 @@ export class NotebookCanvas {
     const order: Page["background"][] = ["grid", "ruled", "blank"];
     p.page = { ...p.page, background: order[(order.indexOf(p.page.background) + 1) % 3] };
     db.pages.update(p.page.id, { background: p.page.background }).catch(() => this.events.onError("No se pudo guardar el fondo."));
-    this.redrawPage(p);
+    this.invalidate();
   }
 
   /** Id of the page at the centre of the screen: the one page commands act on. */
@@ -228,12 +214,22 @@ export class NotebookCanvas {
 
   // --- pages and drawing ---------------------------------------------------
 
-  private makePage(page: Page, index: number): PageState {
-    const el = document.createElement("div");
-    el.className = "sheet";
-    el.style.top = `${index * PITCH}px`;
-    this.doc.appendChild(el);
-    return { page, el, canvas: null, ctx: null, raster: 0, drawn: [], loaded: false };
+  /**
+   * Pages grow downward on their own: whenever the last page gets ink, a blank
+   * one is added after it, so there is always room to keep writing.
+   */
+  private growIfLastHasInk() {
+    const last = this.pages[this.pages.length - 1];
+    if (!last || !last.loaded || !last.drawn.length) return;
+    const page: Page = {
+      id: crypto.randomUUID(),
+      notebook_id: this.notebookId,
+      position: last.page.position + 1,
+      background: last.page.background,
+    };
+    db.pages.add(page).catch(() => this.events.onError("No se pudo guardar la página nueva."));
+    this.pages.push({ page, drawn: [], loaded: true });
+    this.invalidate();
   }
 
   private get docHeight() {
@@ -244,83 +240,105 @@ export class NotebookCanvas {
     return Math.min(this.pages.length - 1, Math.max(0, Math.floor(docY / PITCH)));
   }
 
-  private get targetRaster() {
-    return Math.min(this.view.s * (window.devicePixelRatio || 1), MAX_RASTER);
-  }
-
   private applyView(next: View) {
     const { host } = this;
     this.view = clampView(next, host.clientWidth, host.clientHeight, this.docHeight);
-    const { s, tx, ty } = this.view;
-    // One transform moves and scales every page; nothing is laid out per frame.
-    this.doc.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${s})`;
-    this.updateVisible();
-    // Re-rendering ink on every pinch frame would stutter: canvases are stretched
-    // by the transform during the gesture and sharpened once it settles.
-    clearTimeout(this.rasterTimer);
-    this.rasterTimer = window.setTimeout(this.sharpen, 120);
+    this.loadVisible();
+    // Follow the finger at once by moving the already-drawn canvas, then redraw the
+    // ink for the new view at full screen resolution: next frame when drawing is
+    // cheap, or as soon as the gesture pauses when the page is very full.
+    const r = this.rendered, k = this.view.s / r.s;
+    this.ink.style.transform = `translate3d(${this.view.tx - r.tx * k}px, ${this.view.ty - r.ty * k}px, 0) scale(${k})`;
+    clearTimeout(this.renderTimer);
+    if (this.renderCost <= 8) this.invalidate();
+    else this.renderTimer = window.setTimeout(() => this.invalidate(), 90);
     this.drawOverlay();
   }
 
-  /** Only pages on screen hold a canvas and their strokes' paths. */
-  private updateVisible() {
-    const y0 = toPage(this.view, 0, 0)[1];
-    const y1 = toPage(this.view, 0, this.host.clientHeight)[1];
-    const first = this.pageAt(y0), last = this.pageAt(y1);
-    this.pages.forEach((p, i) => {
-      if (i < first || i > last) {
-        p.canvas?.remove();
-        p.canvas = p.ctx = null;
-        return;
-      }
-      if (!p.canvas) {
-        p.canvas = document.createElement("canvas");
-        p.ctx = p.canvas.getContext("2d")!;
-        p.el.appendChild(p.canvas);
-        this.rasterPage(p);
-      }
-      if (!p.loaded) {
-        p.loaded = true;
-        // shortcut: strokes of a visited page stay in memory; evict far pages if notebooks get huge.
-        loadStrokes(p.page.id).then(
-          (strokes) => {
-            if (this.disposed) return;
-            p.drawn.unshift(...strokes.map(makeDrawn));
-            this.redrawPage(p);
-          },
-          () => this.events.onError("No se pudieron cargar los trazos de una página."),
-        );
-      }
-    });
-  }
-
-  private sharpen = () => {
-    if (this.current) {
-      this.rasterTimer = window.setTimeout(this.sharpen, 120);
-      return;
+  /** Strokes are read from IndexedDB the first time a page comes on screen. */
+  private loadVisible() {
+    const first = this.pageAt(toPage(this.view, 0, 0)[1]);
+    const last = this.pageAt(toPage(this.view, 0, this.host.clientHeight)[1]);
+    for (let i = first; i <= last; i++) {
+      const p = this.pages[i];
+      if (!p || p.loaded) continue;
+      p.loaded = true;
+      // shortcut: strokes of a visited page stay in memory; evict far pages if notebooks get huge.
+      loadStrokes(p.page.id).then(
+        (strokes) => {
+          if (this.disposed) return;
+          p.drawn.unshift(...strokes.map(makeDrawn));
+          this.growIfLastHasInk();
+          this.invalidate();
+        },
+        () => this.events.onError("No se pudieron cargar los trazos de una página."),
+      );
     }
-    for (const p of this.pages) if (p.canvas && p.raster !== this.targetRaster) this.rasterPage(p);
-  };
-
-  private rasterPage(p: PageState) {
-    p.raster = this.targetRaster;
-    p.canvas!.width = Math.round(PAGE_W * p.raster);
-    p.canvas!.height = Math.round(PAGE_H * p.raster);
-    this.redrawPage(p);
   }
 
-  private redrawPage(p: PageState) {
-    const ctx = p.ctx;
-    if (!ctx) return;
-    ctx.setTransform(p.raster, 0, 0, p.raster, 0, 0);
-    drawBackground(ctx, p.page.background);
-    for (const d of p.drawn) if (!this.hidden.has(d.stroke.id)) paint(ctx, d.path, d.stroke.color, d.stroke.tool);
+  /** Ask for a redraw of the ink; many requests in one frame cost one redraw. */
+  private invalidate() {
+    if (this.renderFrame) return;
+    const run = () => {
+      cancelAnimationFrame(this.renderFrame);
+      clearTimeout(this.renderFallback);
+      this.renderFrame = 0;
+      this.render();
+    };
+    this.renderFrame = requestAnimationFrame(run);
+    // Browsers pause animation frames for a page that is not being painted; the
+    // timer makes sure the ink is still redrawn, so it is never left stretched.
+    this.renderFallback = window.setTimeout(run, 100);
   }
 
-  private sizeOverlay() {
+  /** Clip to the page and set page coordinates on a screen-sized canvas. */
+  private enterPage(ctx: CanvasRenderingContext2D, index: number) {
     const dpr = window.devicePixelRatio || 1;
-    this.overlay.width = Math.round(this.host.clientWidth * dpr);
-    this.overlay.height = Math.round(this.host.clientHeight * dpr);
+    const { s, tx, ty } = this.view;
+    ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * tx, dpr * (ty + index * PITCH * s));
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, PAGE_W, PAGE_H);
+    ctx.clip();
+  }
+
+  /**
+   * Draw the visible part of the notebook straight at screen resolution. Strokes
+   * are vectors, so this is what keeps ink sharp at any zoom: nothing is ever a
+   * stretched picture for longer than a gesture.
+   */
+  private render() {
+    const started = performance.now();
+    const ctx = this.ictx;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, this.ink.width, this.ink.height);
+    const [x0, y0] = toPage(this.view, 0, 0);
+    const [x1, y1] = toPage(this.view, this.host.clientWidth, this.host.clientHeight);
+    for (let i = this.pageAt(y0); i <= this.pageAt(y1) && i < this.pages.length; i++) {
+      const p = this.pages[i];
+      const top = i * PITCH;
+      this.enterPage(ctx, i);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, PAGE_W, PAGE_H);
+      drawBackground(ctx, p.page.background);
+      for (const d of p.drawn) {
+        // Skip strokes outside the screen: zoomed in, most of the page is not drawn.
+        if (d.box[2] < x0 || d.box[0] > x1 || d.box[3] < y0 - top || d.box[1] > y1 - top) continue;
+        if (!this.hidden.has(d.stroke.id)) paint(ctx, d.path, d.stroke.color, d.stroke.tool);
+      }
+      ctx.restore();
+    }
+    this.rendered = this.view;
+    this.ink.style.transform = "";
+    this.renderCost = performance.now() - started;
+  }
+
+  private sizeCanvases() {
+    const dpr = window.devicePixelRatio || 1;
+    for (const c of [this.ink, this.overlay]) {
+      c.width = Math.round(this.host.clientWidth * dpr);
+      c.height = Math.round(this.host.clientHeight * dpr);
+    }
   }
 
   /** Everything transient: the stroke being written, the lasso, the selection. */
@@ -409,7 +427,7 @@ export class NotebookCanvas {
       if (!incoming.length && !p.drawn.some((d) => gone.has(d.stroke.id))) continue;
       p.drawn = p.drawn.filter((d) => !gone.has(d.stroke.id)).concat(incoming.map(makeDrawn));
       p.drawn.sort((a, b) => a.stroke.created_at - b.stroke.created_at); // keep drawing order
-      this.redrawPage(p);
+      this.invalidate();
     }
     const kept = new Set(op.after.map((s) => s.id));
     db.transaction("rw", db.strokes, async () => {
@@ -487,6 +505,7 @@ export class NotebookCanvas {
       // (it never enters `touches`, so its moves do nothing).
       if (this.current || performance.now() - this.lastPen < PALM_MS) return;
       this.touches.set(e.pointerId, this.pos(e));
+      this.taps.set(e.pointerId, { at: this.pos(e), t: performance.now() });
       this.stopGlide();
       return;
     }
@@ -506,7 +525,7 @@ export class NotebookCanvas {
       if (this.current.mode === "lasso") this.selection = null;
       else {
         this.hidden = new Set(this.selection!.items.map((d) => d.stroke.id));
-        this.redrawPage(this.pages[this.selection!.page]);
+        this.invalidate();
       }
     } else {
       const p = this.local(e, page);
@@ -628,7 +647,7 @@ export class NotebookCanvas {
       c.removed.push(...hit.map((d) => d.stroke));
       touched.add(p);
     }
-    for (const p of touched) this.redrawPage(p);
+    if (touched.size) this.invalidate();
     c.last = to;
     c.at = this.pos(e);
   }
@@ -636,6 +655,7 @@ export class NotebookCanvas {
   private up = (e: PointerEvent) => {
     if (e.pointerType === "touch") {
       if (!this.touches.delete(e.pointerId)) return;
+      this.tapEnded(e);
       const flick = this.touches.size === 0 && e.type === "pointerup" && performance.now() - this.lastMove < 80;
       if (flick && Math.hypot(...this.velocity) > 0.1) this.glide();
       else this.velocity = [0, 0];
@@ -670,10 +690,12 @@ export class NotebookCanvas {
       // Fast path: paint just this stroke instead of redrawing the page.
       const d = makeDrawn(stroke);
       p.drawn.push(d);
-      if (p.ctx) {
-        p.ctx.setTransform(p.raster, 0, 0, p.raster, 0, 0);
-        paint(p.ctx, d.path, stroke.color, stroke.tool);
-      }
+      if (this.rendered === this.view && !this.renderFrame) {
+        this.enterPage(this.ictx, c.page);
+        paint(this.ictx, d.path, stroke.color, stroke.tool);
+        this.ictx.restore();
+      } else this.invalidate();
+      this.growIfLastHasInk();
       db.strokes
         .add(stroke)
         .catch(() => this.events.onError("No se pudo guardar el último trazo. Revisa el espacio libre del iPad."));
@@ -694,7 +716,7 @@ export class NotebookCanvas {
       const sel = this.selection!;
       this.hidden = new Set();
       if (c.now[0] === c.start[0] && c.now[1] === c.start[1]) {
-        this.redrawPage(this.pages[sel.page]);
+        this.invalidate();
       } else {
         const f = this.transformOf(c);
         const before = sel.items.map((d) => d.stroke);
@@ -707,6 +729,19 @@ export class NotebookCanvas {
     }
     this.drawOverlay();
   };
+
+  /** A short, still, single-finger touch is a tap; two of them close together are a double tap. */
+  private tapEnded(e: PointerEvent) {
+    const start = this.taps.get(e.pointerId);
+    this.taps.delete(e.pointerId);
+    const at = this.pos(e), now = performance.now();
+    const far = (a: XY, b: XY, px: number) => Math.hypot(a[0] - b[0], a[1] - b[1]) > px;
+    if (!start || e.type !== "pointerup" || this.touches.size || now - start.t > 250 || far(start.at, at, 10)) return;
+    if (this.lastTap && now - this.lastTap.t < 350 && !far(this.lastTap.at, at, 40)) {
+      this.lastTap = null;
+      this.events.onDoubleTap();
+    } else this.lastTap = { at, t: now };
+  }
 
   private wheel = (e: WheelEvent) => {
     e.preventDefault();
@@ -721,7 +756,7 @@ export class NotebookCanvas {
   private prevent = (e: Event) => e.preventDefault();
 
   private resize = () => {
-    this.sizeOverlay();
+    this.sizeCanvases();
     this.applyView(this.view);
   };
 }

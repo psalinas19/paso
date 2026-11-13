@@ -119,7 +119,7 @@ iPad (PWA)                                   Backend (FastAPI)
 ## 6. Módulos
 
 ### 6.1 Canvas
-- **Páginas:** tamaño carta con fondo cuadriculado (opciones: cuadrícula, rayado, blanco) y scroll vertical. Se agrega una página nueva al final. Cuadernos y páginas se pueden crear, renombrar, borrar y reordenar.
+- **Páginas:** tamaño carta con fondo cuadriculado (opciones: cuadrícula, rayado, blanco) y scroll vertical. Las páginas crecen solas hacia abajo: en cuanto la última tiene algo escrito, aparece otra en blanco después; no hay botón de «agregar página». Cuadernos y páginas se pueden crear, renombrar, borrar y reordenar.
 - **Entrada por tipo:**
   - El Pencil dibuja.
   - Un dedo hace scroll y dos dedos hacen zoom.
@@ -128,12 +128,13 @@ iPad (PWA)                                   Backend (FastAPI)
   - Pluma con 3 grosores y 4 colores.
   - Resaltador.
   - Borrador por trazo. Modo de **un solo uso**: se activa, borra y al levantar el lápiz vuelve sola la pluma anterior.
-    - El doble toque del Apple Pencil **no llega a las páginas web** (Safari no lo expone; solo las apps nativas lo reciben), así que el borrador se activa desde la pantalla. Si algún día hay app nativa (12.8), el doble toque se conecta a este mismo modo.
+    - El doble toque del Apple Pencil **no llega a las páginas web** (Safari no lo expone; solo las apps nativas lo reciben), así que el borrador se activa desde la pantalla: con su botón o con un **doble toque de un dedo** sobre la hoja (otro doble toque regresa a la pluma). Si algún día hay app nativa (12.8), el doble toque se conecta a este mismo modo.
   - **Formas por pausa:** si trazo una línea y mantengo el lápiz quieto sin levantarlo, el trazo se endereza en una recta perfecta; mientras sigo sin levantar, puedo mover el extremo para alargarla o girarla. Lo mismo para círculo, triángulo y rectángulo. Una forma ya hecha se mueve y se estira con el lazo.
   - Lazo para seleccionar, mover o borrar.
   - Deshacer/rehacer.
 - **Ajustes de Safari:** `touch-action: none` en el canvas y desactivar la selección de texto y el menú contextual de iOS.
 - **Guardado:** los trazos se guardan como vectores (puntos + presión) y hay autoguardado.
+- **Nitidez:** la tinta se dibuja siempre como vectores a la resolución real de la pantalla, a cualquier zoom. Nunca queda como una imagen estirada más allá de lo que dura un gesto.
 - **Rendimiento:** el trazo debe sentirse inmediato. Meta: sin retraso perceptible ni saltos, y renderizado incremental (no redibujar toda la página por trazo).
 - **Revisar:** exporta la región seleccionada (o la página completa si no hay selección) como PNG con fondo blanco, a la resolución mínima que siga siendo legible, para ahorrar tokens.
 
@@ -203,7 +204,7 @@ Compara cada paso con el anterior según su `kind`:
 - **Modo examen (opcional en el repaso):** los niveles de ayuda se bloquean hasta que termine el ejercicio.
 
 ### 6.7 Exportar
-- Una página o un cuaderno a PDF. **Siempre disponible, también sin conexión**, y debe verse bien: trazos vectoriales (nítidos al hacer zoom, no una captura de pantalla), con los mismos colores, grosores y fondo que en pantalla.
+- Páginas elegidas o el cuaderno completo a PDF: un diálogo lista las páginas y parte con las que tienen algo escrito. **Siempre disponible, también sin conexión**, y debe verse bien: trazos vectoriales (nítidos al hacer zoom, no una captura de pantalla), con los mismos colores, grosores y fondo que en pantalla.
 - Una revisión (transcripción + solución) a LaTeX, para reportes.
 
 ### 6.10 Graficar

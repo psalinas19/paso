@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { exportNotebookJson, exportNotebookPdf, exportPagePdf } from "../export/notebook";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ExportDialog } from "../export/ExportDialog";
 import { deletePage, movePage } from "../library/actions";
 import { NotebookCanvas, type Tool } from "./NotebookCanvas";
 import { PEN_COLORS, PEN_SIZES, Toolbar, type ToolKind } from "./Toolbar";
@@ -11,7 +11,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   onLibrary: () => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const docRef = useRef<HTMLDivElement>(null);
+  const inkRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const canvas = useRef<NotebookCanvas | null>(null);
 
@@ -21,6 +21,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   const [state, setState] = useState({ canUndo: false, canRedo: false, hasSelection: false });
   // Bumped after pages are reordered or deleted, to rebuild the surface from the database.
   const [revision, setRevision] = useState(0);
+  const [exporting, setExporting] = useState(false);
   // What the one-shot eraser returns to.
   const writingTool = useRef<"pen" | "highlighter">("pen");
 
@@ -31,10 +32,12 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   }, [active, pen, size]);
 
   useEffect(() => {
-    const c = new NotebookCanvas(hostRef.current!, docRef.current!, overlayRef.current!, notebookId, {
+    const c = new NotebookCanvas(hostRef.current!, inkRef.current!, overlayRef.current!, notebookId, {
       onError,
       onState: setState,
       onEraseEnd: () => setActive(writingTool.current),
+      // Double tap with a finger: eraser on, or back to writing if it was already on.
+      onDoubleTap: () => setActive((now) => (now === "eraser" ? writingTool.current : "eraser")),
     });
     canvas.current = c;
     return () => c.destroy();
@@ -47,16 +50,15 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
     setActive(kind);
   };
 
+  const closeExport = useCallback(() => setExporting(false), []);
   const failed = (what: string) => () => onError(`No se pudo ${what}.`);
   /** Run a command on the page at the centre of the screen, then rebuild if it changed the pages. */
-  const onPage = (action: (pageId: string) => Promise<unknown>, what: string, rebuild = true) => () => {
+  const onPage = (action: (pageId: string) => Promise<unknown>, what: string) => () => {
     const pageId = canvas.current?.currentPageId();
-    if (pageId) void action(pageId).then(() => rebuild && setRevision((r) => r + 1), failed(what));
+    if (pageId) void action(pageId).then(() => setRevision((r) => r + 1), failed(what));
   };
   const menu = [
-    { label: "Exportar esta página a PDF", run: onPage((id) => exportPagePdf(notebookId, id), "exportar la página", false) },
-    { label: "Exportar el cuaderno a PDF", run: () => void exportNotebookPdf(notebookId).catch(failed("exportar el cuaderno")) },
-    { label: "Exportar el cuaderno a JSON (respaldo)", run: () => void exportNotebookJson(notebookId).catch(failed("exportar el respaldo")) },
+    { label: "Exportar…", run: () => setExporting(true) },
     { label: "Subir esta página", run: onPage((id) => movePage(id, -1), "mover la página") },
     { label: "Bajar esta página", run: onPage((id) => movePage(id, 1), "mover la página") },
     {
@@ -71,7 +73,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   return (
     <>
       <div ref={hostRef} className="canvas-host">
-        <div ref={docRef} className="doc" />
+        <canvas ref={inkRef} className="ink" />
         <canvas ref={overlayRef} className="overlay" />
       </div>
       <Toolbar
@@ -89,10 +91,10 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
         onRedo={() => canvas.current?.redo()}
         onDeleteSelection={() => canvas.current?.deleteSelection()}
         onBackground={() => canvas.current?.cycleBackground()}
-        onAddPage={() => canvas.current?.addPage()}
         onLibrary={onLibrary}
         menu={menu}
       />
+      {exporting && <ExportDialog notebookId={notebookId} onClose={closeExport} onError={onError} />}
     </>
   );
 }

@@ -26,7 +26,17 @@ function AddForm({ label, placeholder, onAdd, children }: {
   };
   return (
     <form className="add" onSubmit={submit}>
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder} aria-label={placeholder} />
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        // Names, not prose: keep iOS autocorrect and its suggestion bubbles out of the way.
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+        enterKeyHint="done"
+      />
       {children}
       <button type="submit" disabled={!name.trim()}>{label}</button>
     </form>

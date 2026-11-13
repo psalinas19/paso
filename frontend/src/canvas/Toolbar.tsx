@@ -28,7 +28,6 @@ interface Props {
   onRedo(): void;
   onDeleteSelection(): void;
   onBackground(): void;
-  onAddPage(): void;
   onLibrary(): void;
   /** Entries of the "more" menu: page and export commands. */
   menu: { label: string; danger?: boolean; run(): void }[];
@@ -115,12 +114,6 @@ export function Toolbar(p: Props) {
         <Icon>
           <rect x="4" y="4" width="16" height="16" rx="2" />
           <path d="M4 10h16M4 15h16M10 4v16M15 4v16" />
-        </Icon>
-      </Button>
-      <Button label="Agregar página" onClick={p.onAddPage}>
-        <Icon>
-          <path d="M6 3h8l4 4v14H6z" />
-          <path d="M12 10v6M9 13h6" />
         </Icon>
       </Button>
       {/* Native popover: opens and closes with no state of ours, and closes on a tap outside. */}
