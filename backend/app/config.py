@@ -43,7 +43,9 @@ class Settings(BaseSettings):
     app_token: str = ""
     #: Comma-separated origins allowed to call the API from a browser.
     allowed_origins: str = (
-        "https://paso-libreta.paso-frontend.workers.dev,http://localhost:4173,http://localhost:5173"
+        "https://paso-libreta.paso-frontend.workers.dev,http://localhost:4173,"
+        # The last one is the native iPad shell (Capacitor).
+        "http://localhost:5173,capacitor://localhost"
     )
     data_dir: Path = DATA_DIR
     #: Empty = SQLite file inside data_dir.

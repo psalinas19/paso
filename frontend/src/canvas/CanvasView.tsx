@@ -7,6 +7,7 @@ import { ReviewPanel, type ReviewState } from "../review/ReviewPanel";
 import { SettingsDialog } from "../review/SettingsDialog";
 import { deletePage, movePage } from "../library/actions";
 import { NotebookCanvas, type Tool } from "./NotebookCanvas";
+import { afterDoubleTap, onPencilDoubleTap } from "../native/pencil";
 import { loadPrefs, savePrefs } from "./prefs";
 import { PEN_COLORS, PEN_SIZES, Toolbar, type ToolKind } from "./Toolbar";
 
@@ -57,6 +58,9 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   useEffect(() => canvas.current?.setTool(tool), [tool, notebookId, revision]);
   useEffect(() => canvas.current?.setGestures(gestures), [gestures, notebookId, revision]);
   useEffect(() => savePrefs({ active, pen, size, gestures }, writingTool.current), [active, pen, size, gestures]);
+
+  // Native app only: the Apple Pencil double tap arms the one-shot eraser, and undoes that if repeated.
+  useEffect(() => onPencilDoubleTap(() => setActive((now) => afterDoubleTap(now, writingTool.current))), []);
 
   const choose = (kind: ToolKind) => {
     if (kind === "pen" || kind === "highlighter") writingTool.current = kind;

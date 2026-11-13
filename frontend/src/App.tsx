@@ -3,6 +3,7 @@ import { registerSW } from "virtual:pwa-register";
 import { CanvasView } from "./canvas/CanvasView";
 import { db, ensureFirstPage } from "./db";
 import { Library } from "./library/Library";
+import { isNative } from "./native/pencil";
 
 const LAST_NOTEBOOK = "paso:last-notebook";
 
@@ -22,7 +23,8 @@ export function App() {
       .catch(() => setError("No se pudo abrir el almacenamiento de este navegador. ¿Estás en navegación privada?"));
     // Ask Safari not to evict the notes when the iPad runs low on space.
     void navigator.storage?.persist?.();
-    registerSW({ immediate: true, onOfflineReady: () => setOfflineReady(true) });
+    // The native app carries its files inside: no service worker, and nothing to announce.
+    if (!isNative) registerSW({ immediate: true, onOfflineReady: () => setOfflineReady(true) });
   }, []);
 
   useEffect(() => {
