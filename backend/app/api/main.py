@@ -60,6 +60,10 @@ from app.tutor.solve import NothingToSolveError, build_solution
 from app.verification.runner import verify, verify_recognition
 from app.verification.worker import TimeoutWorker
 
+#: What the notebook may ask for in its "speed" setting. The slower, more
+#: thorough levels stay a deliberate choice in .env, not a tap in the app.
+EFFORTS = frozenset({"low", "medium", "high"})
+
 #: A selection is a PNG of pen strokes on white; a few hundred KB is typical.
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 
@@ -176,11 +180,21 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
                 "o espera al mes siguiente.",
             )
 
-    def model() -> LLMProvider:
-        try:
-            return provider or build_provider(settings)
-        except MissingApiKeyError as exc:
-            raise HTTPException(503, str(exc)) from exc
+    # One client per effort level, kept for the life of the server: building a
+    # new one for every request also opened a new connection every time.
+    providers: dict[str | None, LLMProvider] = {}
+
+    def model(effort: str | None = None) -> LLMProvider:
+        if effort is not None and effort not in EFFORTS:
+            raise HTTPException(422, "La velocidad pedida no existe. Usa low, medium o high.")
+        if provider is not None:
+            return provider
+        if effort not in providers:
+            try:
+                providers[effort] = build_provider(settings, effort)
+            except MissingApiKeyError as exc:
+                raise HTTPException(503, str(exc)) from exc
+        return providers[effort]
 
     def charge(db: Session, endpoint: str, usage: Usage | None) -> float:
         """Record one paid call; returns its cost."""
@@ -239,6 +253,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         image: UploadFile,
         subject: Annotated[str, Form()],
         strokes: Annotated[str | None, Form()] = None,
+        effort: Annotated[str | None, Form()] = None,
     ) -> CheckResponse:
         try:
             subject_config = load_subject_cached(subject)
@@ -251,7 +266,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         if len(data) > MAX_UPLOAD_BYTES:
             raise HTTPException(413, "La imagen es demasiado grande. Selecciona una región menor.")
 
-        llm = model()
+        llm = model(effort)
 
         check_id = uuid.uuid4().hex
         # The name is ours, never the client's: nothing from the request reaches the path.
@@ -290,7 +305,11 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
 
     @app.post("/api/checks/{check_id}/steps/{step_id}", dependencies=auth)
     def correct(
-        db: Db, check_id: str, step_id: str, latex: Annotated[str, Form()]
+        db: Db,
+        check_id: str,
+        step_id: str,
+        latex: Annotated[str, Form()],
+        effort: Annotated[str | None, Form()] = None,
     ) -> CheckResponse:
         """The student retyped a misread step: restructure it and verify again."""
         row, subject_config = stored(db, check_id)
@@ -318,7 +337,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
 
         refuse_over_budget(db)
         try:
-            updated, usage, _ = correct_step(subject_config, steps, step_id, latex, model())
+            updated, usage, _ = correct_step(subject_config, steps, step_id, latex, model(effort))
         except UnknownStepError as exc:
             raise HTTPException(404, str(exc)) from exc
         except ProviderError as exc:
@@ -339,7 +358,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         return respond(db, row, cost, usage.latency_ms, verifying)
 
     @app.post("/api/checks/{check_id}/hint", dependencies=auth)
-    def hint(db: Db, check_id: str) -> CheckResponse:
+    def hint(db: Db, check_id: str, effort: Annotated[str | None, Form()] = None) -> CheckResponse:
         """Level 1 (SPEC 2.5): which step fails and a nudge, without the answer."""
         row, subject_config = stored(db, check_id)
         if row.hint_json:
@@ -353,7 +372,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         except (OSError, UnidentifiedImageError):
             picture = None  # the hint still works from the transcription alone
         try:
-            result, usage = build_hint(subject_config, steps, verification, model(), picture)
+            result, usage = build_hint(subject_config, steps, verification, model(effort), picture)
         except ProviderError as exc:
             raise HTTPException(502, str(exc)) from exc
 
@@ -382,7 +401,9 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         return run
 
     @app.post("/api/checks/{check_id}/level/2", dependencies=auth)
-    def explain(db: Db, check_id: str) -> CheckResponse:
+    def explain(
+        db: Db, check_id: str, effort: Annotated[str | None, Form()] = None
+    ) -> CheckResponse:
         """Level 2 (SPEC 2.5): why each step holds, what went wrong and the corrected step."""
         row, subject_config = stored(db, check_id)
         if row.explanation_json:
@@ -397,7 +418,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
                 subject_config,
                 steps,
                 verification,
-                model(),
+                model(effort),
                 verifier_for(subject_config, spent),
                 picture_of(row),
             )
@@ -412,7 +433,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         return respond(db, row, cost, usage.latency_ms, sum(spent))
 
     @app.post("/api/checks/{check_id}/solve", dependencies=auth)
-    def solve(db: Db, check_id: str) -> CheckResponse:
+    def solve(db: Db, check_id: str, effort: Annotated[str | None, Form()] = None) -> CheckResponse:
         """Level 3 (SPEC 6.4): the worked solution, verified before it is shown."""
         row, subject_config = stored(db, check_id)
         if row.solution_json:
@@ -427,7 +448,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
                 subject_config,
                 steps,
                 verification,
-                model(),
+                model(effort),
                 verifier_for(subject_config, spent),
                 picture_of(row),
             )

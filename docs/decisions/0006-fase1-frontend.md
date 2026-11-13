@@ -76,6 +76,21 @@ Medido en esta máquina: recalcular el contorno cuesta 0.2 ms por evento en un t
 
 **Lo que una página web no puede igualar.** Safari dibuja las páginas a 60 cuadros por segundo y no ofrece el camino de baja latencia que usan las apps nativas para la tinta. El trazo siempre irá algo más atrás de la punta que en GoodNotes. Envolver la web en una app nativa no lo cambia (ver el plan de app nativa): haría falta dibujar con las herramientas de Apple, es decir, reescribir el lienzo.
 
+### Líneas rápidas con muescas y figuras que no se formaban (2026-11-13)
+
+Tercera prueba en el iPad: al trazar rápido y largo, la línea «se fractura, le salen bultos»; y las figuras por pausa no se formaban. Las dos cosas se reprodujeron con trazos simulados antes de tocar nada.
+
+**Las muescas.** Si una muestra del lápiz cae un poco *detrás* de la anterior, el trazo avanza, retrocede un pelo y vuelve a avanzar, y el contorno lo dibuja como una muesca. Los navegadores entregan las muestras del lápiz en lotes y un lote puede traslaparse con el anterior; no puedo confirmar desde aquí que esa sea la causa en Safari, pero produce exactamente ese dibujo. Tres defensas:
+- Al **dibujar** se descartan las muestras que retroceden y enseguida siguen adelante (`withoutBacktracks`). Un cambio de dirección real no se toca: sigue en la nueva dirección. Como es al dibujar, también arregla trazos ya guardados, sin modificar los datos.
+- Al **capturar** no se acepta una muestra más vieja que una ya tomada.
+- La **presión** se promedia en una ventana corta (`steadyPressure`): cada salto se volvía un bulto de grosor.
+
+**El trazo cortado en dos.** Si Safari cancela los eventos de puntero a medio trazo con el Pencil todavía en el vidrio, antes el trazo terminaba ahí y empezaba otro desde los eventos táctiles. Ahora el mismo trazo continúa desde los eventos táctiles; lo mismo si los eventos de puntero simplemente dejan de llegar.
+
+**Las figuras.** Nadie sostiene el lápiz perfectamente quieto: durante la pausa la punta tiembla y el Pencil reporta cada temblor, cientos de muestras en un punto. Contadas como recorrido, hacían que una recta pareciera mucho más larga que la distancia entre sus extremos, y ya no se reconocía como recta. Mis pruebas anteriores dejaban el lápiz inmóvil y por eso no lo vieron. Ahora, antes de reconocer, la pausa se recorta al punto donde el lápiz se asentó (`withoutDwell`), usando el mismo radio que la pausa permite. Además la pausa tolera más temblor (12 px en vez de 8) y dura medio segundo.
+
+Sin probar en el iPad. Lo que confirmaría la causa de las muescas es un cuaderno exportado a JSON con unas líneas rápidas: ahí están las muestras tal como llegaron.
+
 ### Biblioteca con portadas (2026-11-13)
 
 En la prueba en el iPad no era obvio que el nombre de un cuaderno se podía tocar. Ahora cada cuaderno es una **portada**: la miniatura de su primera página con un lomo, el título y cuántas páginas tiene. Al tocarla se hunde un poco. Renombrar, mover y borrar pasaron a un menú **⋯** en la esquina de cada portada, para que lo principal (abrir) sea lo único grande. «Nuevo cuaderno» es una portada punteada con un **+**.

@@ -22,7 +22,8 @@ class MissingApiKeyError(RuntimeError):
     pass
 
 
-def build_provider(settings: Settings) -> LLMProvider:
+def build_provider(settings: Settings, effort: str | None = None) -> LLMProvider:
+    """`effort` overrides ANTHROPIC_EFFORT for this provider; None keeps the setting."""
     if not settings.anthropic_api_key:
         raise MissingApiKeyError(
             "Falta ANTHROPIC_API_KEY. Copia backend/.env.example a backend/.env y "
@@ -31,7 +32,7 @@ def build_provider(settings: Settings) -> LLMProvider:
     return AnthropicProvider(
         model=settings.anthropic_model,
         api_key=settings.anthropic_api_key,
-        effort=settings.anthropic_effort.strip().lower() or None,
+        effort=(effort or settings.anthropic_effort).strip().lower() or None,
     )
 
 

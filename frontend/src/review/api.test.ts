@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { backendOrigin, cleanToken, postCorrection, postExplain, postHint, postSolve } from "./api";
+import { backendOrigin, cleanToken, loadConfig, postCorrection, postExplain, postHint, postSolve, saveConfig } from "./api";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -65,4 +65,27 @@ test("the explanation and the solution are asked for by review id", async () => 
     "https://back.example/api/checks/abc/level/2",
     "https://back.example/api/checks/abc/solve",
   ]);
+});
+
+test("every request to the model carries the speed the user chose", async () => {
+  const fetch = backend({ id: "abc" });
+  const sent = () => (fetch.mock.calls.at(-1)![1].body as FormData).get("effort");
+
+  await postHint({ ...config, speed: "fast" }, "abc"); // a request with no other body
+  expect(sent()).toBe("low");
+  await postCorrection({ ...config, speed: "balanced" }, "abc", "s3", "x = 3");
+  expect(sent()).toBe("medium");
+  expect((fetch.mock.calls.at(-1)![1].body as FormData).get("latex")).toBe("x = 3"); // alongside, not instead
+  await postSolve(config, "abc"); // nothing chosen: as careful as before
+  expect(sent()).toBe("high");
+});
+
+test("the speed setting is remembered, and an unknown one falls back to careful", () => {
+  const store = new Map<string, string>();
+  vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) });
+  expect(loadConfig().speed).toBe("careful");
+  saveConfig({ ...config, speed: "fast" });
+  expect(loadConfig()).toEqual({ ...config, speed: "fast" });
+  store.set("paso:backend", JSON.stringify({ url: config.url, token: "t", speed: "warp" }));
+  expect(loadConfig().speed).toBe("careful");
 });

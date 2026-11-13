@@ -245,7 +245,7 @@ body {
   font-weight: 600;
 }
 
-.sheet-dialog input {
+.sheet-dialog :is(input, select) {
   display: block;
   width: 100%;
   min-height: 44px;
@@ -259,6 +259,11 @@ body {
   font-weight: 400;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.sheet-dialog select {
+  background: #fff;
+  color: inherit;
 }
 
 .muted {

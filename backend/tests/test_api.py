@@ -650,3 +650,26 @@ def test_the_effort_setting_reaches_the_provider(monkeypatch):
     assert built["effort"] == "medium"
     build_provider(Settings(anthropic_api_key="k", anthropic_effort=""))
     assert built["effort"] is None  # untouched: the API default applies
+
+
+def test_the_notebook_can_ask_for_speed_and_the_client_is_reused(settings, monkeypatch):
+    built = []
+    inner = FakeProvider()
+
+    def fake_build(_settings, effort=None):
+        built.append(effort)
+        return inner
+
+    monkeypatch.setattr("app.api.main.build_provider", fake_build)
+    client = TestClient(create_app(settings))  # no provider injected: the real path
+
+    first = post_check(client, data={"subject": "general", "effort": "low"})
+    assert first.status_code == 200, first.text
+    post_check(client, data={"subject": "general", "effort": "low"})
+    ask(client, first.json()["id"], "solve", data={"effort": "medium"})
+    post_check(client)  # no preference: whatever .env says
+
+    # One client per level, built once, not one per request.
+    assert built == ["low", "medium", None]
+    assert post_check(client, data={"subject": "general", "effort": "max"}).status_code == 422
+    assert built == ["low", "medium", None]

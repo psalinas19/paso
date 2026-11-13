@@ -232,7 +232,7 @@ py -3.12 -m uv run python -m app.case confirm ed-01
 
 Debajo del costo, el panel dice en qué se fue la espera: «Tardó 9 s: 7 s el modelo, 1 s comprobar, 1 s la conexión».
 
-- Casi todo suele ser **el modelo**. Se puede pedir que piense menos: en `backend\.env` pon `ANTHROPIC_EFFORT=medium` (o `low`) y reinicia el backend. Responde más rápido y cuesta menos, pero puede leer o explicar peor; no está medido.
+- Casi todo suele ser **el modelo**. Se le puede pedir que piense menos: en la libreta, **⋯ → Ajustes de revisión… → Velocidad de respuesta**, elige *Equilibrada* o *Rápida*. Responde antes y cuesta menos, pero puede leer o explicar peor; no está medido. *Cuidadosa* es como venía funcionando.
 - Si lo que pesa es **la conexión**, es el túnel o el wifi.
 
 ### Si la app dice que hay un error y tú crees que no

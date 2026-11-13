@@ -93,9 +93,19 @@ export interface CheckResponse {
   usage: UsageSummary;
 }
 
+/** How long the model thinks before answering. Faster costs less and may read or explain worse. */
+export type Speed = "fast" | "balanced" | "careful";
+
+export const SPEEDS: { id: Speed; label: string; effort: string }[] = [
+  { id: "fast", label: "Rápida", effort: "low" },
+  { id: "balanced", label: "Equilibrada", effort: "medium" },
+  { id: "careful", label: "Cuidadosa (la más lenta)", effort: "high" },
+];
+
 export interface BackendConfig {
   url: string;
   token: string;
+  speed?: Speed;
 }
 
 const KEY = "paso:backend";
@@ -124,14 +134,15 @@ export function loadConfig(): BackendConfig {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}");
     // Normalised on read too, so an address saved by an older version just works.
-    return { url: backendOrigin(String(saved.url ?? "")), token: cleanToken(String(saved.token ?? "")) };
+    const speed = SPEEDS.find((s) => s.id === saved.speed)?.id ?? "careful";
+    return { url: backendOrigin(String(saved.url ?? "")), token: cleanToken(String(saved.token ?? "")), speed };
   } catch {
-    return { url: "", token: "" };
+    return { url: "", token: "", speed: "careful" };
   }
 }
 
 export function saveConfig(config: BackendConfig) {
-  localStorage.setItem(KEY, JSON.stringify({ url: backendOrigin(config.url), token: cleanToken(config.token) }));
+  localStorage.setItem(KEY, JSON.stringify({ url: backendOrigin(config.url), token: cleanToken(config.token), speed: config.speed ?? "careful" }));
 }
 
 /** Below 0.7 the reading is doubtful and the panel says so (SPEC 6.2). */
@@ -140,6 +151,12 @@ export const LOW_CONFIDENCE = 0.7;
 async function call<T>(config: BackendConfig, path: string, init: RequestInit = {}): Promise<T> {
   if (!config.url || !config.token) throw new Error("Falta configurar la dirección del backend y el token en Ajustes de revisión.");
   if (!navigator.onLine) throw new Error("Sin conexión: la revisión necesita internet.");
+  // Every request that reaches the model says how fast the user wants it.
+  if (init.method === "POST") {
+    const body = init.body instanceof FormData ? init.body : new FormData();
+    body.set("effort", SPEEDS.find((s) => s.id === config.speed)?.effort ?? "high");
+    init = { ...init, body };
+  }
   let response: Response;
   try {
     response = await fetch(config.url + path, {

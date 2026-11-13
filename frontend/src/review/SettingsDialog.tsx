@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { checkHealth, loadConfig, saveConfig } from "./api";
+import { checkHealth, loadConfig, saveConfig, SPEEDS, type Speed } from "./api";
 
 /** Where the review backend is and the shared token. Stored on this iPad only. */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
@@ -60,6 +60,18 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             autoComplete="off"
           />
         </label>
+        <label>
+          Velocidad de respuesta
+          <select value={config.speed ?? "careful"} onChange={(e) => setConfig({ ...config, speed: e.target.value as Speed })}>
+            {SPEEDS.map((speed) => (
+              <option key={speed.id} value={speed.id}>{speed.label}</option>
+            ))}
+          </select>
+        </label>
+        <p className="muted">
+          Más rápida también cuesta menos, pero el modelo piensa menos: puede leer o explicar peor. El panel dice cuánto
+          tardó cada revisión para que compares.
+        </p>
         {status && (
           <p className={status.ok ? "ok" : "bad"} role="status">
             {status.text}
