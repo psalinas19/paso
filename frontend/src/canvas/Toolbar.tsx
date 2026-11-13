@@ -140,8 +140,10 @@ export function Toolbar(p: Props) {
         </Icon>
       </button>
       <div id="notebook-menu" popover="auto" className="menu">
-        {p.menu.map((item) => (
-          <button key={item.label} type="button" className={item.danger ? "danger" : undefined} popoverTarget="notebook-menu" popoverTargetAction="hide" onClick={item.run}>
+        {/* Keyed by position: some labels change when tapped (on/off settings), and a
+            button that is replaced mid-tap never gets to close the menu. */}
+        {p.menu.map((item, index) => (
+          <button key={index} type="button" className={item.danger ? "danger" : undefined} popoverTarget="notebook-menu" popoverTargetAction="hide" onClick={item.run}>
             {item.label}
           </button>
         ))}

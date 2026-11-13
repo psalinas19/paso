@@ -9,8 +9,8 @@ import { STROKE_FORMAT_VERSION, type Point, type Stroke } from "../strokes/forma
 import { boxOf, fractionInside, hitsStroke, inBox, unionBox, type Box, type XY } from "../strokes/geometry";
 import { outlinePoints, svgPath } from "../strokes/outline";
 import { adjustShape, recognizeShape, shapePoints, type Shape } from "../strokes/shapes";
-import { handlesOf, scaleFactors, tapCommand, type Axes } from "./gestures";
-import { BACKGROUND_COLOR, BACKGROUND_LINE_WIDTH, backgroundLines, clampView, fitWidth, PAGE_H, PAGE_W, toPage, zoomAt, type View } from "./view";
+import { handlesOf, isScribble, scaleFactors, scribbleTargets, tapCommand, type Axes } from "./gestures";
+import { BACKGROUND_COLOR, BACKGROUND_LINE_WIDTH, backgroundLines, clampView, fitWidth, PAGE_H, PAGE_W, toPage, viewAtPage, zoomAt, type View } from "./view";
 
 export type Tool =
   | { kind: "pen" | "highlighter"; color: string; size: number }
@@ -115,6 +115,7 @@ export class NotebookCanvas {
   /** The finger contact in progress, while it could still turn out to be a tap. */
   private tap: { t0: number; lastDown: number; fingers: number; travel: number; origins: Map<number, XY> } | null = null;
   private gestures = true;
+  private scribbleErase = false;
   private shownPage = "";
   private velocity: XY = [0, 0]; // px per ms, for the glide after a flick
   private lastMove = 0;
@@ -191,6 +192,17 @@ export class NotebookCanvas {
   /** Turn the two- and three-finger taps on or off. */
   setGestures(on: boolean) {
     this.gestures = on;
+  }
+
+  /** Scribbling over ink with the pen erases it. Off unless the user turns it on. */
+  setScribbleErase(on: boolean) {
+    this.scribbleErase = on;
+  }
+
+  /** Scroll so that page `index` (0-based) starts at the top of the screen. */
+  goToPage(index: number) {
+    this.stopGlide();
+    this.applyView(viewAtPage(this.view, Math.max(0, Math.min(this.pages.length - 1, index)), PITCH));
   }
 
   /** A copy of the selection, slightly offset and selected, ready to be dragged into place. */
@@ -785,6 +797,14 @@ export class NotebookCanvas {
         if (x !== last[0] || y !== last[1]) c.points.push([x, y, last[2]]);
       }
       const p = this.pages[c.page];
+      if (this.scribbleErase && this.tool.kind === "pen" && !c.shape && isScribble(c.points)) {
+        const hit = scribbleTargets(c.points, p.drawn.map((d) => d.stroke));
+        if (hit.length) {
+          // The zigzag was a command, not ink: remove what it covers and keep nothing of it.
+          this.commit({ before: hit, after: [] });
+          return this.drawOverlay();
+        }
+      }
       const stroke: Stroke = {
         format_version: STROKE_FORMAT_VERSION,
         id: crypto.randomUUID(),

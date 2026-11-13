@@ -8,6 +8,7 @@ import { SettingsDialog } from "../review/SettingsDialog";
 import { deletePage, movePage } from "../library/actions";
 import { NotebookCanvas, type Tool } from "./NotebookCanvas";
 import { afterDoubleTap, onPencilDoubleTap } from "../native/pencil";
+import { PagesPanel } from "./PagesPanel";
 import { loadPrefs, savePrefs } from "./prefs";
 import { PEN_COLORS, PEN_SIZES, Toolbar, type ToolKind } from "./Toolbar";
 
@@ -28,6 +29,8 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   const [pen, setPen] = useState(prefs.pen);
   const [size, setSize] = useState(prefs.size);
   const [gestures, setGestures] = useState(prefs.gestures);
+  const [scribble, setScribble] = useState(prefs.scribble);
+  const [pagesOpen, setPagesOpen] = useState(false);
   const [where, setWhere] = useState({ current: 1, total: 1 });
   const [state, setState] = useState({ canUndo: false, canRedo: false, hasSelection: false });
   // Bumped after pages are reordered or deleted, to rebuild the surface from the database.
@@ -57,7 +60,8 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
 
   useEffect(() => canvas.current?.setTool(tool), [tool, notebookId, revision]);
   useEffect(() => canvas.current?.setGestures(gestures), [gestures, notebookId, revision]);
-  useEffect(() => savePrefs({ active, pen, size, gestures }, writingTool.current), [active, pen, size, gestures]);
+  useEffect(() => canvas.current?.setScribbleErase(scribble), [scribble, notebookId, revision]);
+  useEffect(() => savePrefs({ active, pen, size, gestures, scribble }, writingTool.current), [active, pen, size, gestures, scribble]);
 
   // Native app only: the Apple Pencil double tap arms the one-shot eraser, and undoes that if repeated.
   useEffect(() => onPencilDoubleTap(() => setActive((now) => afterDoubleTap(now, writingTool.current))), []);
@@ -117,12 +121,17 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
     if (pageId) void action(pageId).then(() => setRevision((r) => r + 1), failed(what));
   };
   const menu = [
+    { label: "Páginas…", run: () => setPagesOpen(true) },
     { label: "Exportar…", run: () => setExporting(true) },
     { label: "Revisiones guardadas", run: () => setPanel({ kind: "history" }) },
     { label: "Ajustes de revisión…", run: () => setSettings(true) },
     {
       label: gestures ? "Gestos de deshacer: activados (tocar para apagar)" : "Gestos de deshacer: apagados (tocar para activar)",
       run: () => setGestures((on) => !on),
+    },
+    {
+      label: scribble ? "Garabatear para borrar: activado (tocar para apagar)" : "Garabatear para borrar: apagado (tocar para activar)",
+      run: () => setScribble((on) => !on),
     },
     { label: "Subir esta página", run: onPage((id) => movePage(id, -1), "mover la página") },
     { label: "Bajar esta página", run: onPage((id) => movePage(id, 1), "mover la página") },
@@ -164,6 +173,19 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
         onLibrary={onLibrary}
         menu={menu}
       />
+      {pagesOpen && (
+        <PagesPanel
+          // Remounted when pages change, so it never shows a stale list.
+          key={`${revision}-${where.total}`}
+          notebookId={notebookId}
+          current={where.current - 1}
+          onGo={(index) => {
+            canvas.current?.goToPage(index);
+            setPagesOpen(false);
+          }}
+          onClose={() => setPagesOpen(false)}
+        />
+      )}
       {exporting && <ExportDialog notebookId={notebookId} onClose={closeExport} onError={onError} />}
       {settings && <SettingsDialog onClose={closeSettings} />}
       {panel && (

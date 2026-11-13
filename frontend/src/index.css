@@ -683,3 +683,63 @@ html:has(.library) body {
   height: 1px;
   opacity: 0;
 }
+
+/* --- page thumbnails ---------------------------------------------------- */
+
+.pages {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 340px;
+  max-width: 92vw;
+  box-sizing: border-box;
+  padding: calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  overflow-y: auto;
+  background: #f4f2ed;
+  color: #1f2a44;
+  box-shadow: 2px 0 16px rgb(0 0 0 / 0.14);
+}
+
+.pages header {
+  display: flex;
+  align-items: center;
+}
+
+.pages h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 20px;
+}
+
+.pages ol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pages li button {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.pages li button[aria-current="page"] {
+  border-color: #1d4ed8;
+}
+
+.pages canvas {
+  display: block;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.2);
+}

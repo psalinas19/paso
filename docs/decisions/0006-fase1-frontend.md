@@ -53,6 +53,14 @@ Aprobada en [el plan de mecánicas](../plan-mecanicas-y-app-nativa.md). Probada 
 
 **Importar un respaldo** como cuaderno nuevo: ver [stroke-format.md](../stroke-format.md).
 
+### Segunda tanda (mismo día)
+
+**Garabatear para borrar, apagado de fábrica.** Se enciende en **⋯ → Garabatear para borrar**. Con la pluma, un zigzag apretado (cuatro o más idas y vueltas) borra los trazos que **cubre**: los que quedan en su mayoría dentro del garabato y que este realmente cruza. Una raya que tacha un término no da vueltas y no borra nada; un zigzag que solo toca la punta de un trazo largo (una resistencia junto a su cable) tampoco. Si el garabato no cubre nada, se queda como tinta. Es una sola operación de deshacer. Está apagado porque en matemáticas un falso borrado cuesta más que ir al botón.
+
+**Panel de páginas.** **⋯ → Páginas…** abre las miniaturas; tocar una lleva a esa página con el mismo zoom. Cada miniatura se dibuja con el mismo contorno que la hoja, solo cuando entra a la vista. No reordena ni duplica todavía.
+
+**Las entradas del menú ⋯ van con clave por posición.** Con clave por texto, un ajuste cuyo rótulo cambia al tocarlo se reemplazaba a medio toque, el menú no se cerraba y el siguiente trazo se perdía cerrándolo.
+
 ## Limitaciones conocidas
 
 - **El doble toque del Apple Pencil no existe para la web.** Safari no lo expone. El borrador es de un solo uso, desde la barra (SPEC §6.1). Un doble toque con el dedo se probó como sustituto y se retiró: la mano apoyada lo activaba por accidente.

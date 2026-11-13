@@ -43,6 +43,8 @@ Tras publicar una versión nueva, el iPad la descarga al abrir la app con intern
 
 - **Deshacer:** toque corto con dos dedos. **Rehacer:** con tres. Si la mano apoyada los dispara, apágalos en **⋯ → Gestos de deshacer**.
 - **Lazo:** con algo seleccionado aparecen *Duplicar* y *Borrar*. Las esquinas cambian el tamaño sin deformar; los puntos de los lados estiran en un solo sentido.
+- **Páginas:** **⋯ → Páginas…** muestra las miniaturas; toca una para ir a ella.
+- **Garabatear para borrar** viene apagado. Se enciende en **⋯ → Garabatear para borrar**: un zigzag apretado sobre un trazo lo borra. Una raya que tacha no borra nada.
 - Abajo al centro se ve en qué página vas. La barra recuerda la pluma y el grosor que dejaste.
 
 Estos gestos están probados en computadora, **todavía no en el iPad**.

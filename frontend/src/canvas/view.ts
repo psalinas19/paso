@@ -57,6 +57,11 @@ export function clampView(v: View, viewportW: number, viewportH: number, docH = 
   };
 }
 
+/** The same zoom, scrolled so page `index` starts at the top. `pitch` is page height plus gap. */
+export function viewAtPage(v: View, index: number, pitch: number): View {
+  return { ...v, ty: MARGIN - index * pitch * v.s };
+}
+
 /** Initial view: page as wide as the screen allows, top of the page visible. */
 export function fitWidth(viewportW: number, viewportH: number): View {
   const s = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, (viewportW - 2 * MARGIN) / PAGE_W));
