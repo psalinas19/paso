@@ -24,10 +24,26 @@ from app.verification.registry import register
 from app.verification.strategies.base import KindStrategy
 
 
+def _evaluate_transform(node: Any) -> Any:
+    """Carry out one Laplace transform or inverse transform, if SymPy can."""
+    try:
+        done = node.doit(noconds=True)
+    except Exception:  # noqa: BLE001 - one it cannot do stays as it is
+        return node
+    if isinstance(node, sympy.InverseLaplaceTransform) and isinstance(done, sympy.Basic):
+        # SymPy writes f(t)*Heaviside(t); on paper the step function is implied
+        # for t > 0 and nobody writes it. A shifted Heaviside(t - a) is kept.
+        done = done.subs(sympy.Heaviside(node.args[2]), 1)
+    return done
+
+
 def evaluate_operations(expr: Any) -> Any:
-    """Carry out any written-but-unevaluated derivative or integral."""
+    """Carry out any written-but-unevaluated derivative, integral or transform."""
     if not isinstance(expr, sympy.Basic):
         return expr
+    transforms = (sympy.LaplaceTransform, sympy.InverseLaplaceTransform)
+    if expr.atoms(*transforms):
+        expr = expr.replace(lambda node: isinstance(node, transforms), _evaluate_transform)
     if expr.atoms(sympy.Derivative) or expr.atoms(sympy.Integral):
         try:
             return expr.doit()
@@ -65,6 +81,10 @@ def integration_constant_judgement(parent: Any, current: Any) -> Judgement | Non
     integrated_over = indefinite_integral_vars(parent)
     if not integrated_over or not isinstance(current, sympy.Basic):
         return None
+    if indefinite_integral_vars(current):
+        # Still carrying an indefinite integral (the middle of an integration
+        # by parts): its constant is inside that integral, not missing.
+        return None
 
     try:
         evaluated = parent.doit()
@@ -74,7 +94,12 @@ def integration_constant_judgement(parent: Any, current: Any) -> Judgement | Non
         return None  # SymPy could not solve it; not our call to make
 
     try:
-        delta = sympy.simplify(as_difference(current) - as_difference(evaluated))
+        # On paper the antiderivative of 1/y is ln|y|; SymPy gives log(y). The
+        # bars are not a difference worth a cross.
+        without_bars = (as_difference(current) - as_difference(evaluated)).replace(
+            sympy.Abs, lambda inner: inner
+        )
+        delta = sympy.simplify(without_bars)
     except Exception:  # noqa: BLE001
         return None
 

@@ -84,6 +84,21 @@ BASE_WHITELIST: dict[str, Any] = {
     "nan": sympy.nan,
 }
 
+
+def _inverse_laplace(transform: Any, s: Any, t: Any) -> Any:
+    # SymPy's class wants a fourth argument (the integration plane) that nobody
+    # writes on paper.
+    return sympy.InverseLaplaceTransform(transform, s, t, None)
+
+
+#: Functions a subject can switch on through `extra_functions` that need more
+#: than a lookup in the sympy namespace. Both transforms stay unevaluated, like
+#: Integral: writing "the inverse transform of F" is a step, not its result.
+EXTRA_CALLABLES: dict[str, Any] = {
+    "LaplaceTransform": sympy.LaplaceTransform,
+    "InverseLaplaceTransform": _inverse_laplace,
+}
+
 # `integrate` is deliberately absent: it evaluates, which would turn a written
 # "integrate both sides" step into its own antiderivative and hide an error in
 # the next step. Integrals stay unevaluated as `Integral` until a strategy
@@ -193,7 +208,9 @@ def build_local_dict(subject: SubjectConfig) -> dict[str, Any]:
         local.pop("conjugate", None)
 
     for name in subject.extra_functions:
-        if hasattr(sympy, name):
+        if name in EXTRA_CALLABLES:
+            local[name] = EXTRA_CALLABLES[name]
+        elif hasattr(sympy, name):
             local[name] = getattr(sympy, name)
 
     return local

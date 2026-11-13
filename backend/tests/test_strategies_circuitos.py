@@ -189,15 +189,16 @@ def test_power_with_the_wrong_product_is_caught(circuitos):
 # --- subject configuration drives the strategies (SPEC 12.5) ---------------
 
 
-def test_circuitos_enables_the_system_strategy_and_ed_does_not(circuitos, ed):
+def test_a_subject_only_checks_what_its_config_enables(circuitos, ed):
     assert "system" in circuitos.strategies
-    assert "system" not in ed.strategies
     assert "ode" in ed.strategies
+    # The same subject with systems switched off in its configuration.
+    ed = ed.model_copy(update={"strategies": [s for s in ed.strategies if s != "system"]})
 
     steps = [
         mkstep("s1", "[Eq(2*V_1 - V_2, 10), Eq(-V_1 + 3*V_2, 5)]", K.SYSTEM, R.ASSERTION),
         mkstep("s2", "[Eq(V_1, 7), Eq(V_2, 5)]", K.SYSTEM, R.EQUIVALENT, ("s1",)),
     ]
-    # Wrong in both subjects, but only Circuitos has a strategy that can tell.
+    # Wrong either way, but only a subject with the strategy enabled can tell.
     assert status_of(run(circuitos, steps), "s2") is VerificationStatus.ERROR
     assert status_of(run(ed, steps), "s2") is VerificationStatus.UNVERIFIABLE

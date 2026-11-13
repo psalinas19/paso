@@ -45,7 +45,18 @@ def verify_step(ctx: VerifyContext, step_id: str) -> StepVerification:
     step = ctx.steps[step_id]
     started = time.perf_counter()
     strategy = select(step, ctx)
-    result = strategy.verify(step, ctx)
+    try:
+        result = strategy.verify(step, ctx)
+    except Exception as exc:  # noqa: BLE001 - whatever broke, it is our failure
+        # A crash inside a check must never surface as an error on the page,
+        # nor take the whole review down with it (CLAUDE.md, rule 1).
+        result = StepVerification(
+            step_id=step.id,
+            status=VerificationStatus.UNVERIFIABLE,
+            detail="No se pudo comprobar: la comprobación falló por dentro "
+            f"({type(exc).__name__}).",
+            method_used=f"{strategy.name}+crash",
+        )
     result.duration_ms = int((time.perf_counter() - started) * 1000)
     return result
 

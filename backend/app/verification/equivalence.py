@@ -41,17 +41,38 @@ class Judgement:
         return self.outcome is Outcome.EQUIVALENT
 
 
+#: Operations that may be written down without being carried out.
+UNEVALUATED = (
+    sympy.Derivative,
+    sympy.Integral,
+    sympy.LaplaceTransform,
+    sympy.InverseLaplaceTransform,
+)
+
+
 def _is_symbolic_opaque(expr: Any) -> bool:
     """Whether numeric sampling is meaningless for this expression.
 
-    Undefined functions (y(x)), unevaluated derivatives and unevaluated
-    integrals have no numeric value, so sampling them would compare nothing.
+    Undefined functions (y(x)) and unevaluated derivatives, integrals and
+    transforms have no numeric value, so sampling them would compare nothing.
     """
     if not isinstance(expr, sympy.Basic):
         return True
-    return bool(
-        expr.atoms(AppliedUndef) or expr.atoms(sympy.Derivative) or expr.atoms(sympy.Integral)
-    )
+    return bool(expr.atoms(AppliedUndef) or expr.atoms(*UNEVALUATED))
+
+
+def names(obj: Any) -> set[str]:
+    """Every name a step talks about: its symbols and its unknown functions.
+
+    Two steps can only be compared as "the same statement" when they talk about
+    the same things. A step that brings in `r_1` or drops `C2` is using
+    something the other step does not say, so a mismatch proves nothing.
+    """
+    if isinstance(obj, list | tuple):
+        return set().union(*(names(item) for item in obj)) if obj else set()
+    if not isinstance(obj, sympy.Basic):
+        return set()
+    return {s.name for s in obj.free_symbols} | {f.func.__name__ for f in obj.atoms(AppliedUndef)}
 
 
 def _sample_numerically(diff: sympy.Basic, seed: int = 0) -> Judgement:
@@ -175,11 +196,29 @@ def satisfies(candidate: Any, equation: Any, subject: SubjectConfig) -> Judgemen
 
     `candidate` is an Eq assigning a symbol or function, e.g. Eq(y(x), ...) or
     Eq(V_1, 10); `equation` is the relation it should satisfy.
+
+    "It does not close" is only a verdict when the question made sense. Three
+    cases look like a failure and are not one, and each of them used to put a
+    cross on correct work:
+
+    - `equation` is a bare expression: there is nothing to satisfy.
+    - `equation` never mentions what the candidate solves for (r_1 = -1 against
+      r**2 + 3*r + 2 = 0): substituting changes nothing and the "residual" is
+      just the equation itself.
+    - the residual still carries symbols the candidate does not have (the C1 of
+      an intermediate general solution, a resistance read off a diagram): the
+      page fixes their value somewhere this check cannot see.
     """
-    if not isinstance(candidate, sympy.Equality) or not isinstance(equation, sympy.Basic):
+    if not isinstance(candidate, sympy.Equality) or not isinstance(equation, sympy.Equality):
         return Judgement(Outcome.INCONCLUSIVE, "substitute", "no se pudo sustituir")
 
     target = as_difference(equation)
+    if not target.has(candidate.lhs):
+        return Judgement(
+            Outcome.INCONCLUSIVE,
+            "substitute",
+            "el paso anterior no menciona lo que este paso despeja",
+        )
     try:
         substituted = target.subs(candidate.lhs, candidate.rhs)
         residual = sympy.simplify(substituted.doit())
@@ -191,6 +230,15 @@ def satisfies(candidate: Any, equation: Any, subject: SubjectConfig) -> Judgemen
 
     if _is_symbolic_opaque(residual):
         return Judgement(Outcome.INCONCLUSIVE, "substitute", "quedó un residuo no reducible")
+
+    free = set(subject.independent_vars) | names(candidate)
+    loose = sorted(names(residual) - free)
+    if loose:
+        return Judgement(
+            Outcome.INCONCLUSIVE,
+            "substitute",
+            f"falta saber cuánto vale {', '.join(loose)} para comprobarlo",
+        )
 
     sampled = _sample_numerically(residual)
     return Judgement(sampled.outcome, "substitute", sampled.detail)
@@ -219,6 +267,18 @@ def specializes(parent: Any, current: Any, subject: SubjectConfig) -> Judgement:
     unknowns = sorted(pd.free_symbols - cd.free_symbols, key=lambda s: s.name)
     if not unknowns:
         return Judgement(Outcome.INCONCLUSIVE, "specialize", "no hay constante que fijar")
+
+    # Pinning a constant keeps the statement about the same thing. If the
+    # variable or the unknown function itself is gone (y = C1 cos x + C2 sin x
+    # followed by C1 = 1), the step is the outcome of applying a condition
+    # written elsewhere, and no value of anything makes the two "agree".
+    dropped = names(pd) - names(cd)
+    if dropped & set(subject.independent_vars) or pd.atoms(AppliedUndef) - cd.atoms(AppliedUndef):
+        return Judgement(
+            Outcome.INCONCLUSIVE,
+            "specialize",
+            "el paso fija una constante con una condición que no se puede comprobar aquí",
+        )
 
     try:
         solutions = sympy.solve(delta, unknowns, dict=True)

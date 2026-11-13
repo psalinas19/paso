@@ -4,12 +4,15 @@ notation: ""
 
 complex_domain: false
 independent_vars: [x, t]
+extra_functions: [LaplaceTransform, InverseLaplaceTransform, Heaviside, DiracDelta]
 
 strategies:
   - expression
   - equation
+  - system
   - ode
   - numeric_iteration
+  - laplace
 
 tolerance:
   absolute: 1.0e-9
@@ -56,6 +59,12 @@ notation_notes: |
   La constante de integración la escribo C, C1, C2.
   A veces escribo el paso de integración con el símbolo de integral en ambos lados
   antes de evaluar; eso es un paso legítimo, no un resultado.
+  Transformada de Laplace. En esta materia también puedes usar estas funciones en `sympy`:
+  - `LaplaceTransform(f, t, s)` para L{f(t)}, sin evaluar. Ejemplo: L{e^{-2t}} es `LaplaceTransform(exp(-2*t), t, s)`.
+  - `InverseLaplaceTransform(F, s, t)` para L^{-1}{F(s)}, sin evaluar. Ejemplo: L^{-1}{3/(s^2+9)} es `InverseLaplaceTransform(3/(s**2 + 9), s, t)`.
+  - `Heaviside(t - a)` para el escalón unitario u(t - a) y `DiracDelta(t - a)` para el impulso.
+  La variable del tiempo es siempre `t` y la de Laplace siempre `s`. Las funciones en s se escriben aplicadas: `F(s)`, `Y(s)`; las del tiempo, `f(t)`, `y(t)`.
+  Un renglón como "L^{-1}{F(s)} = f(t)" es una ecuación: `Eq(InverseLaplaceTransform(...), ...)`.
 
 tutor_notes: |
   Antes de corregir, di de qué tipo es la ecuación y por qué el método aplica:

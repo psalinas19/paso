@@ -81,11 +81,20 @@ class OdeStrategy(KindStrategy):
 
     def check_result(self, step: Step, ctx: VerifyContext, current: Any) -> Judgement:
         """The final solution is checked against the original ODE, not against
-        whatever intermediate step happens to precede it."""
+        whatever intermediate step happens to precede it.
+
+        "Original" means the first differential equation the solution can be
+        put into, with the problem data ahead of derived steps. Picking it by
+        ancestry used to land on an intermediate line such as
+        y' = -C1 sin x + C2 cos x, which a particular solution rightly does not
+        satisfy for every C1 and C2.
+        """
         odes = [
-            ctx.parsed_of(a.id)
-            for a in reversed(ctx.ancestors(step))
-            if _is_differential(ctx.parsed_of(a.id))
+            target
+            for target in self.result_targets(step, ctx)
+            if _is_differential(target)
+            and isinstance(current, sympy.Equality)
+            and target.has(current.lhs)
         ]
         if not odes:
             return super().check_result(step, ctx, current)
