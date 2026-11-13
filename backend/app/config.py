@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     #: whether reading and explanations stay as good has to be measured with
     #: `app.eval` (SPEC 12.4).
     anthropic_effort: str = ""
+    #: Optional cheaper model for the chat (SPEC 4). Empty = the same model.
+    #: It needs a price in app/llm/pricing.yaml like any other.
+    anthropic_model_chat: str = ""
 
     max_image_edge: int = Field(default=1600, ge=256, le=8000)
     verify_timeout_seconds: float = Field(default=10.0, gt=0)

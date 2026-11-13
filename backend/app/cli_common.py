@@ -33,6 +33,7 @@ def build_provider(settings: Settings, effort: str | None = None) -> LLMProvider
         model=settings.anthropic_model,
         api_key=settings.anthropic_api_key,
         effort=(effort or settings.anthropic_effort).strip().lower() or None,
+        chat_model=settings.anthropic_model_chat.strip() or None,
     )
 
 

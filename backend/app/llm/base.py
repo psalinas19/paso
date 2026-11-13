@@ -9,6 +9,7 @@ or vendors does not touch recognition, verification or the CLIs.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -89,6 +90,14 @@ class HintDraft:
     usage: Usage
 
 
+@dataclass(frozen=True)
+class ChatTurn:
+    """One message of the conversation about a review."""
+
+    role: str  # "user" or "assistant"
+    content: str
+
+
 @dataclass
 class ExplanationDraft:
     """The model's side of a level-2 explanation."""
@@ -166,4 +175,19 @@ class LLMProvider(Protocol):
         image: PreparedImage | None,
     ) -> SolutionDraft:
         """Solve the problem on the page as structured steps our verifier can check."""
+        ...
+
+    def chat(
+        self,
+        system_prompt: PromptSpec,
+        context: str,
+        turns: list[ChatTurn],
+        image: PreparedImage | None,
+    ) -> Iterator[str | Usage]:
+        """Answer the last turn, as it is written: pieces of text as they are
+        produced, and after the last piece one `Usage` with what the call cost.
+
+        `context` is the state of the exercise; it changes between questions, so
+        it travels apart from the prompt, which does not.
+        """
         ...

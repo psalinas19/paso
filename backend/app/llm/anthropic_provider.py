@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import base64
 import time
+from collections.abc import Iterator
 from typing import Any
 
 import anthropic
 from pydantic import BaseModel
 
 from app.llm.base import (
+    ChatTurn,
     ExplanationDraft,
     HintDraft,
     LLMProvider,
@@ -49,8 +51,11 @@ class AnthropicProvider(LLMProvider):
         client: anthropic.Anthropic | None = None,
         timeout: float = 120.0,
         effort: str | None = None,
+        chat_model: str | None = None,
     ) -> None:
         self.model = model
+        #: A cheaper model for conversation, when configured (SPEC 4).
+        self.chat_model = chat_model or model
         #: None leaves the request as it always was, so the API default applies.
         self._effort = effort
         # A bare Anthropic() also resolves an `ant auth login` profile, so an
@@ -149,6 +154,52 @@ class AnthropicProvider(LLMProvider):
             usage=usage,
         )
 
+    def chat(
+        self,
+        system_prompt: PromptSpec,
+        context: str,
+        turns: list[ChatTurn],
+        image: PreparedImage | None,
+    ) -> Iterator[str | Usage]:
+        started = time.perf_counter()
+        messages: list[dict[str, Any]] = []
+        for index, turn in enumerate(turns):
+            content: list[dict[str, Any]] = [{"type": "text", "text": turn.content}]
+            if index == 0 and image is not None:
+                content.insert(0, self._image_block(image))  # what the student wrote
+            messages.append({"role": turn.role, "content": content})
+
+        try:
+            with self._client.messages.stream(
+                model=self.chat_model,
+                max_tokens=MAX_OUTPUT_TOKENS,
+                system=[
+                    # The rules do not change between questions and are cached;
+                    # the state of the exercise does, and comes after.
+                    {
+                        "type": "text",
+                        "text": system_prompt.text,
+                        "cache_control": {"type": "ephemeral"},
+                    },
+                    {"type": "text", "text": context},
+                ],
+                messages=messages,
+                **({"output_config": {"effort": self._effort}} if self._effort else {}),
+            ) as stream:
+                yield from stream.text_stream
+                final = stream.get_final_message()
+        except anthropic.APIStatusError as exc:
+            raise ProviderError(f"El API respondió {exc.status_code}: {exc.message}") from exc
+        except anthropic.APIConnectionError as exc:
+            raise ProviderError(f"No se pudo conectar con el API: {exc}") from exc
+
+        if final.stop_reason == "refusal":
+            raise ProviderError("El modelo declinó responder a esta pregunta.")
+        if final.stop_reason == "max_tokens":
+            yield "\n\n(La respuesta se cortó por longitud. Pídeme que continúe.)"
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        yield self._usage_of(final, latency_ms, "chat", self.chat_model)
+
     # --- internals --------------------------------------------------------
 
     def _content(self, instruction: str, image: PreparedImage | None) -> list[dict[str, Any]]:
@@ -220,7 +271,10 @@ class AnthropicProvider(LLMProvider):
 
         return payload, self._usage_of(response, latency_ms, endpoint)
 
-    def _usage_of(self, response: object, latency_ms: int, endpoint: str) -> Usage:
+    def _usage_of(
+        self, response: object, latency_ms: int, endpoint: str, model: str | None = None
+    ) -> Usage:
+        model = model or self.model
         raw = getattr(response, "usage", None)
         input_tokens = int(getattr(raw, "input_tokens", 0) or 0)
         output_tokens = int(getattr(raw, "output_tokens", 0) or 0)
@@ -229,13 +283,13 @@ class AnthropicProvider(LLMProvider):
 
         return Usage(
             endpoint=endpoint,
-            model=self.model,
+            model=model,
             # Cached tokens are still input tokens; keeping them in the total
             # makes the usage log comparable across cache hits and misses.
             input_tokens=input_tokens + cache_write + cache_read,
             output_tokens=output_tokens,
             cost_usd=estimate_cost(
-                self.model,
+                model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cache_write_tokens=cache_write,

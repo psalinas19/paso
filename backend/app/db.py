@@ -52,6 +52,16 @@ class Check(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now, index=True)
 
 
+class ChatMessage(SQLModel, table=True):
+    """One message of the conversation about a review (SPEC 6.5)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    check_id: str = Field(index=True)
+    role: str  # "user" or "assistant"
+    content: str
+    created_at: datetime = Field(default_factory=_now)
+
+
 class UsageLog(SQLModel, table=True):
     """One paid call. The monthly budget is enforced from this table."""
 

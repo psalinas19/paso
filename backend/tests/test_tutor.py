@@ -163,3 +163,14 @@ def test_an_inverse_laplace_transform_is_solved_and_proved(general):
         general, steps, run(general, steps), solver, lambda s: run(general, s)
     )
     assert not wrong.verified and wrong.wrong_steps == 1 and len(usages) == 2
+
+
+def test_only_recent_turns_are_sent_and_they_start_on_a_question():
+    from app.llm.base import ChatTurn
+    from app.tutor.chat import MAX_TURNS, recent
+
+    turns = [ChatTurn("user" if i % 2 == 0 else "assistant", str(i)) for i in range(MAX_TURNS + 7)]
+    kept = recent(turns)
+    assert kept[0].role == "user" and kept[-1] == turns[-1]
+    assert len(kept) <= MAX_TURNS
+    assert recent(turns[:3]) == turns[:3]

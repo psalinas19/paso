@@ -35,6 +35,7 @@ class FakeProvider:
         self.instructions: list[str] = []
         self.hint_images: list[object] = []
         self.fail = False
+        self.chats: list[tuple] = []
         #: What the model answers when asked to explain.
         self.explanation = {
             "notes": [("s2", "Restaste 4 en ambos lados."), ("s3", "Dividiste mal."), ("s9", "?")],
@@ -103,6 +104,15 @@ class FakeProvider:
             takeaway="Lo que haces de un lado, hazlo del otro.",
             usage=Usage(endpoint="explain", model=self.model, cost_usd=0.03),
         )
+
+    def chat(self, system_prompt, context, turns, image):
+        self.calls += 1
+        self.chats.append((system_prompt.text, context, list(turns), image))
+        if self.fail:
+            raise ProviderError("El API respondió 529: saturado")
+        yield "Porque al dividir "
+        yield "entre 2 da $x = 3$."
+        yield Usage(endpoint="chat", model=self.model, cost_usd=0.006)
 
     def solve(self, system_prompt, instruction, image):
         del system_prompt, image
@@ -673,3 +683,84 @@ def test_the_notebook_can_ask_for_speed_and_the_client_is_reused(settings, monke
     assert built == ["low", "medium", None]
     assert post_check(client, data={"subject": "general", "effort": "max"}).status_code == 422
     assert built == ["low", "medium", None]
+
+
+# --- chat about a review (phase 3) --------------------------------------------
+
+
+def events_of(response) -> list[tuple[str, dict]]:
+    """The server-sent events of a response, as (event, data) pairs."""
+    import json
+
+    out = []
+    for block in response.text.strip().split("\n\n"):
+        lines = dict(line.split(": ", 1) for line in block.split("\n"))
+        out.append((lines["event"], json.loads(lines["data"])))
+    return out
+
+
+def say(client, check_id, message, **overrides):
+    request = {"headers": AUTH, "data": {"message": message}}
+    request.update(overrides)
+    return client.post(f"/api/checks/{check_id}/chat", **request)
+
+
+def test_the_tutor_answers_in_pieces_and_the_conversation_is_kept(client, settings, provider):
+    first = post_check(client).json()
+    ask(client, first["id"], "level/2")
+
+    response = say(client, first["id"], "  ¿Por qué está mal el paso 3?  ")
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = events_of(response)
+
+    assert [name for name, _ in events] == ["delta", "delta", "done"]
+    assert "".join(data["text"] for name, data in events if name == "delta") == (
+        "Porque al dividir entre 2 da $x = 3$."
+    )
+    assert events[-1][1]["cost_usd"] == 0.006
+    assert events[-1][1]["usage"]["month_spend_usd"] == 0.086
+
+    # The tutor was told the state of the exercise, apart from its rules.
+    prompt, context, turns, image = provider.chats[-1]
+    assert "El verificador manda" in prompt and "Eq(x, 4)" not in prompt
+    assert "Eq(x, 4)" in context and "id s3" in context and "Explicación que ya recibió" in context
+    assert [(t.role, t.content) for t in turns] == [("user", "¿Por qué está mal el paso 3?")]
+    assert image is not None
+
+    # A second question carries the first exchange with it.
+    say(client, first["id"], "¿Y cómo lo evito?")
+    assert [t.role for t in provider.chats[-1][2]] == ["user", "assistant", "user"]
+
+    history = client.get(f"/api/checks/{first['id']}/chat", headers=AUTH).json()["messages"]
+    assert [m["role"] for m in history] == ["user", "assistant", "user", "assistant"]
+    assert history[1]["content"] == "Porque al dividir entre 2 da $x = 3$."
+    with Session(make_engine(settings.resolved_database_url)) as db:
+        assert [u.endpoint for u in db.exec(select(UsageLog)).all()].count("chat") == 2
+
+
+def test_a_failed_answer_is_reported_and_leaves_nothing_behind(client, provider):
+    first = post_check(client).json()
+    provider.fail = True
+
+    events = events_of(say(client, first["id"], "¿Hola?"))
+
+    assert [name for name, _ in events] == ["error"]
+    assert "529" in events[0][1]["detail"]
+    # The question was not stored, so asking again does not double it.
+    assert client.get(f"/api/checks/{first['id']}/chat", headers=AUTH).json()["messages"] == []
+
+
+def test_chat_respects_token_budget_and_limits(client, settings, provider):
+    first = post_check(client).json()
+    calls = provider.calls
+    assert say(client, first["id"], "hola", headers={}).status_code == 401
+    assert say(client, "nope", "hola").status_code == 404
+    assert say(client, first["id"], "   ").status_code == 422
+    assert say(client, first["id"], "x" * 5000).status_code == 422
+    assert client.get("/api/checks/nope/chat", headers=AUTH).status_code == 404
+    with Session(make_engine(settings.resolved_database_url)) as db:
+        db.add(UsageLog(endpoint="check", model="fake-model", cost_usd=1.0))
+        db.commit()
+    assert say(client, first["id"], "hola").status_code == 402
+    assert provider.calls == calls

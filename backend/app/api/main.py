@@ -11,6 +11,7 @@ Run from backend/:
 # No "from __future__ import annotations" here: FastAPI resolves the endpoint
 # annotations at runtime, and the dependencies below are local to create_app().
 
+import json
 import secrets
 import threading
 import time
@@ -22,6 +23,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from PIL import UnidentifiedImageError
 from pydantic import BaseModel
 from sqlmodel import Session, func, select
@@ -29,6 +31,7 @@ from sqlmodel import Session, func, select
 from app.cli_common import MissingApiKeyError, build_provider
 from app.config import Settings, get_settings
 from app.db import (
+    ChatMessage,
     Check,
     UsageLog,
     current_steps,
@@ -38,7 +41,7 @@ from app.db import (
     month_spend,
     month_start,
 )
-from app.llm.base import LLMProvider, ProviderError
+from app.llm.base import ChatTurn, LLMProvider, ProviderError
 from app.recognition.image import prepare_image
 from app.recognition.service import recognize
 from app.schemas import (
@@ -53,6 +56,7 @@ from app.schemas import (
     VerificationResult,
 )
 from app.subjects.loader import SubjectConfig, SubjectNotFoundError, load_subject_cached
+from app.tutor import chat as tutor_chat
 from app.tutor.correction import MAX_LATEX_CHARS, UnknownStepError, correct_step
 from app.tutor.explain import build_explanation
 from app.tutor.hint import build_hint
@@ -72,6 +76,21 @@ class UsageSummary(BaseModel):
     month_spend_usd: float
     budget_usd: float
     checks_this_month: int
+
+
+class ChatLine(BaseModel):
+    role: str
+    content: str
+
+
+class ChatHistory(BaseModel):
+    messages: list[ChatLine]
+
+
+def sse(event: str, data: dict) -> str:
+    """One server-sent event. The payload is JSON so a newline in the text
+    cannot be mistaken for the end of the event."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 class CheckResponse(BaseModel):
@@ -463,6 +482,87 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         db.add(row)
         db.commit()
         return respond(db, row, cost, sum(u.latency_ms for u in usages), sum(spent))
+
+    def conversation(db: Session, check_id: str) -> list[ChatMessage]:
+        return list(
+            db.exec(
+                select(ChatMessage).where(ChatMessage.check_id == check_id).order_by(ChatMessage.id)
+            ).all()
+        )
+
+    @app.get("/api/checks/{check_id}/chat", dependencies=auth)
+    def chat_history(db: Db, check_id: str) -> ChatHistory:
+        stored(db, check_id)
+        return ChatHistory(
+            messages=[ChatLine(role=m.role, content=m.content) for m in conversation(db, check_id)]
+        )
+
+    @app.post("/api/checks/{check_id}/chat", dependencies=auth)
+    def chat(
+        db: Db,
+        check_id: str,
+        message: Annotated[str, Form()],
+        effort: Annotated[str | None, Form()] = None,
+    ) -> StreamingResponse:
+        """Ask the tutor about this review (SPEC 6.5). The answer arrives as it
+        is written, as server-sent events: `delta` with a piece of text, then
+        `done` with the cost, or `error`."""
+        row, subject_config = stored(db, check_id)
+        message = message.strip()
+        if not message:
+            raise HTTPException(422, "Escribe tu pregunta.")
+        if len(message) > tutor_chat.MAX_MESSAGE_CHARS:
+            raise HTTPException(422, "La pregunta es demasiado larga. Hazla más corta.")
+        refuse_over_budget(db)
+        llm = model(effort)
+
+        steps, _ = current_steps(row)
+        context = tutor_chat.build_context(
+            steps,
+            VerificationResult.model_validate_json(row.verification_json),
+            Hint.model_validate_json(row.hint_json) if row.hint_json else None,
+            Explanation.model_validate_json(row.explanation_json) if row.explanation_json else None,
+            Solution.model_validate_json(row.solution_json) if row.solution_json else None,
+        )
+        turns = tutor_chat.recent(
+            [ChatTurn(m.role, m.content) for m in conversation(db, check_id)]
+            + [ChatTurn("user", message)]
+        )
+        prompt = tutor_chat.build_prompt(subject_config)
+        picture = picture_of(row)
+
+        def events() -> Iterator[str]:
+            answer: list[str] = []
+            usage: Usage | None = None
+            try:
+                for piece in llm.chat(prompt, context, turns, picture):
+                    if isinstance(piece, Usage):
+                        usage = piece
+                    else:
+                        answer.append(piece)
+                        yield sse("delta", {"text": piece})
+            except ProviderError as exc:
+                # Nothing is stored: the question can simply be asked again.
+                yield sse("error", {"detail": str(exc)})
+                return
+            # Its own session: the request's one may be closed by the time the
+            # answer has finished streaming.
+            with Session(engine) as later:
+                later.add(ChatMessage(check_id=check_id, role="user", content=message))
+                later.add(ChatMessage(check_id=check_id, role="assistant", content="".join(answer)))
+                cost = charge(later, "chat", usage)
+                later.commit()
+                yield sse(
+                    "done",
+                    {"cost_usd": round(cost, 4), "usage": summary(later).model_dump()},
+                )
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            # Tell proxies on the way (the tunnel) not to hold the text back.
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     return app
 
