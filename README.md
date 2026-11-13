@@ -4,10 +4,10 @@ Libreta inteligente para iPad que revisa, corrige y explica desarrollos de ingen
 
 El spec completo está en [docs/SPEC.md](docs/SPEC.md). Las decisiones de diseño, en [docs/decisions/](docs/decisions/).
 
-**Estado: Fase 1** — hay dos piezas que todavía no se hablan entre sí:
+**Estado: Fase 2 en curso** — la libreta ya puede pedirle una revisión al backend:
 
 - **La libreta** (`frontend/`): PWA para iPad que funciona sin conexión. Ver [ADR 0006](docs/decisions/0006-fase1-frontend.md).
-- **El revisor** (`backend/`): librería de Python y dos comandos que transcriben y verifican una foto. No hay servidor ni base de datos todavía. Ver [ADR 0001](docs/decisions/0001-fase0-scope.md).
+- **El revisor** (`backend/`): transcribe y verifica un desarrollo. Se usa desde la libreta por HTTP ([ADR 0007](docs/decisions/0007-fase2-api.md)) o con dos comandos de terminal ([ADR 0001](docs/decisions/0001-fase0-scope.md)).
 
 ## La libreta (frontend)
 
@@ -115,6 +115,50 @@ La **caché de reconocimiento** (`backend/.cache/`) guarda la transcripción de 
 
 Cómo agregar ejercicios y anotar la transcripción correcta: [backend/eval/README.md](backend/eval/README.md).
 
+## Revisar desde la libreta
+
+La libreta le manda al backend la selección del lazo y muestra cómo se leyó y qué dice el verificador de cada paso. El backend corre en tu laptop y el iPad lo alcanza por un túnel HTTPS.
+
+### Una sola vez
+
+1. **Clave de Anthropic.** Créala en console.anthropic.com (necesita saldo) y pégala en `backend\.env` como `ANTHROPIC_API_KEY`.
+2. **Token de la app.** Genera uno y pégalo en `backend\.env` como `APP_TOKEN`:
+
+```powershell
+py -3.12 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+3. **Túnel.** Instala cloudflared:
+
+```powershell
+winget install Cloudflare.cloudflared
+```
+
+### Cada vez que quieras revisar
+
+En una terminal, desde `backend\`:
+
+```powershell
+py -3.12 -m uv run python -m uvicorn app.api.main:app --port 8000
+```
+
+En otra terminal:
+
+```powershell
+cloudflared tunnel --url http://localhost:8000
+```
+
+El túnel imprime una dirección `https://….trycloudflare.com`. **Cambia en cada arranque.** En la libreta: **⋯ → Ajustes de revisión…**, pega esa dirección y el token, y toca *Probar conexión*.
+
+Luego, en un cuaderno: herramienta **lazo**, encierra el desarrollo y toca **Revisar**.
+
+### Lo que conviene saber
+
+- Cada revisión cuesta dinero (centavos de dólar). El panel muestra el costo y el gasto del mes. Al llegar a `MONTHLY_BUDGET_USD` el backend rechaza revisiones nuevas.
+- La materia del cuaderno decide la notación y las comprobaciones. La plantilla genérica usa la materia `general`.
+- Las revisiones se guardan en `backend\data\` (base de datos e imágenes) y también en el iPad: **⋯ → Revisiones guardadas** funciona sin conexión.
+- Quien tenga la dirección del túnel **y** el token puede gastar tu clave. No compartas el token; si se filtra, cámbialo en `.env` y reinicia.
+
 ## Qué falta
 
-Fase 2 en adelante (backend HTTP, botón Revisar, chat, banco de errores, respaldo automático, despliegue del backend) según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.
+Resto de la Fase 2 (pista, corregir la transcripción, marcas sobre la hoja, banco de pruebas con tinta real) y Fases 3 a 5 (chat, cola sin conexión, banco de errores, respaldo automático, despliegue del backend) según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.

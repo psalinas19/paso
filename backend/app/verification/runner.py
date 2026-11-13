@@ -7,7 +7,7 @@ global state -- so phase 2 can wrap it in an endpoint unchanged (ADR 0001).
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.schemas import (
     RecognitionResult,
@@ -19,6 +19,9 @@ from app.schemas import (
 from app.subjects.loader import SubjectConfig
 from app.verification.registry import VerifyContext, load_builtin_strategies, select
 from app.verification.safe_parse import try_parse
+
+if TYPE_CHECKING:
+    from app.verification.worker import TimeoutWorker
 
 load_builtin_strategies()
 
@@ -97,22 +100,31 @@ def verify(
     subject: SubjectConfig,
     steps: list[Step],
     timeout_seconds: float | None = None,
+    worker: TimeoutWorker | None = None,
 ) -> VerificationResult:
     """Verify a whole development.
 
     With `timeout_seconds`, each step runs in a killable worker process so a
-    runaway simplify() cannot hang the app (SPEC 6.3).
+    runaway simplify() cannot hang the app (SPEC 6.3). A long-lived caller (the
+    API) passes its own `worker` so the process and its SymPy import are paid
+    for once, not on every review.
     """
     verdicts: dict[str, StepVerification] = {}
 
-    if timeout_seconds and timeout_seconds > 0:
+    if worker is not None or (timeout_seconds and timeout_seconds > 0):
         from app.verification.worker import TimeoutWorker
 
         subject_data = subject.model_dump(mode="json")
         steps_data = [s.model_dump(mode="json") for s in steps]
-        with TimeoutWorker(timeout_seconds) as worker:
+        own = None if worker is not None else TimeoutWorker(timeout_seconds or 0)
+        active = worker if worker is not None else own
+        assert active is not None
+        try:
             for step in steps:
-                verdicts[step.id] = worker.verify(subject_data, steps_data, step.id)
+                verdicts[step.id] = active.verify(subject_data, steps_data, step.id)
+        finally:
+            if own is not None:
+                own.close()
     else:
         ctx = build_context(subject, steps)
         for step in steps:
@@ -131,5 +143,6 @@ def verify_recognition(
     subject: SubjectConfig,
     recognition: RecognitionResult,
     timeout_seconds: float | None = None,
+    worker: TimeoutWorker | None = None,
 ) -> VerificationResult:
-    return verify(subject, recognition.steps, timeout_seconds=timeout_seconds)
+    return verify(subject, recognition.steps, timeout_seconds=timeout_seconds, worker=worker)

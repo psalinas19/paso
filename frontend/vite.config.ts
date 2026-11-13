@@ -13,6 +13,8 @@ export default defineConfig({
       // would interrupt writing or wipe a half-typed name.
       registerType: "prompt",
       includeAssets: ["apple-touch-icon.png"],
+      // woff2 too: the maths fonts must be on the iPad to read a saved review offline.
+      workbox: { globPatterns: ["**/*.{js,css,html,woff2}"] },
       manifest: {
         name: "Paso",
         short_name: "Paso",

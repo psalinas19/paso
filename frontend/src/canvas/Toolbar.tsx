@@ -27,6 +27,7 @@ interface Props {
   onUndo(): void;
   onRedo(): void;
   onDeleteSelection(): void;
+  onReview(): void;
   onBackground(): void;
   onLibrary(): void;
   /** Entries of the "more" menu: page and export commands. */
@@ -89,6 +90,11 @@ export function Toolbar(p: Props) {
           <path d="M9.5 9.5l6 6M8 19h11" />
         </Icon>
       </Button>
+      {p.hasSelection && (
+        <button type="button" className="tool review-button" onClick={p.onReview}>
+          Revisar
+        </button>
+      )}
       {p.hasSelection && (
         <Button label="Borrar la selección" onClick={p.onDeleteSelection}>
           <Icon>

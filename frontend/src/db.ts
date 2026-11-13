@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
+import type { CheckResponse } from "./review/api";
 import type { Stroke } from "./strokes/format";
 
 export interface Semester {
@@ -31,12 +32,29 @@ export interface Page {
   background: "grid" | "ruled" | "blank";
 }
 
+/** A review as shown in the panel, kept on the iPad so it can be read offline (SPEC 6.9). */
+export interface Review {
+  /** Same id as the Check stored by the backend. */
+  id: string;
+  notebook_id: string;
+  page_id: string;
+  /** Where on the page the reviewed selection was: [x0, y0, x1, y1] in page units. */
+  box: [number, number, number, number];
+  created_at: number;
+  recognition: CheckResponse["recognition"];
+  verification: CheckResponse["verification"];
+  cost_usd: number;
+  month_spend_usd: number;
+  budget_usd: number;
+}
+
 export const db = new Dexie("paso") as Dexie & {
   semesters: EntityTable<Semester, "id">;
   subjects: EntityTable<Subject, "id">;
   notebooks: EntityTable<Notebook, "id">;
   pages: EntityTable<Page, "id">;
   strokes: EntityTable<Stroke, "id">;
+  reviews: EntityTable<Review, "id">;
 };
 
 // Schema changes go in a new .version(n) with an upgrade function; never edit this one.
@@ -47,6 +65,11 @@ db.version(1).stores({
   pages: "id, [notebook_id+position]",
   // One row per stroke: autosave writes only the new stroke, never the whole page.
   strokes: "id, [page_id+created_at]",
+});
+
+// v2 (phase 2): reviews. Only the new table is declared; the others carry over untouched.
+db.version(2).stores({
+  reviews: "id, notebook_id, page_id, created_at",
 });
 
 /** Strokes of a page in drawing order. */

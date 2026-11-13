@@ -8,10 +8,11 @@ Desde `backend/`. En Windows, `python` a secas es el stub de Microsoft Store: us
 
 ```powershell
 py -3.12 -m uv sync                                   # instalar
-py -3.12 -m uv run pytest                             # tests (sin red)
+py -3.12 -m uv run python -m pytest                   # tests (sin red)
 py -3.12 -m uv run ruff check . ; py -3.12 -m uv run ruff format .
 py -3.12 -m uv run python -m app.poc <img> --materia ED
 py -3.12 -m uv run python -m app.eval [--no-llm] [--case <id>]
+py -3.12 -m uv run python -m uvicorn app.api.main:app --port 8000   # API HTTP
 ```
 
 Desde `frontend/` (Node ≥ 22.12):
@@ -24,7 +25,7 @@ npm run deploy         # publica en https://paso-libreta.paso-frontend.workers.d
 
 ## Estado
 
-Fase 1 construida, en prueba en el iPad. Backend: librería + dos CLIs; **no hay** FastAPI, SQLite ni Alembic todavía ([ADR 0001](docs/decisions/0001-fase0-scope.md)). Frontend: PWA offline sin conexión al backend ([ADR 0006](docs/decisions/0006-fase1-frontend.md)).
+Fase 2, entrega 2a construida: la libreta manda la selección del lazo a `POST /api/check` y muestra transcripción y verificación ([ADR 0007](docs/decisions/0007-fase2-api.md)). Faltan 2b (banco de pruebas, corregir transcripción, pista) y 2c (marcas sobre la hoja). **El reconocimiento aún no se ha medido con el API real: `eval/cases/` está vacío.** Fase 1 sigue en prueba en el iPad ([ADR 0006](docs/decisions/0006-fase1-frontend.md)).
 
 ## Arquitectura
 
@@ -36,6 +37,8 @@ app/recognition/          imagen -> pasos
 app/verification/         pasos -> estados, registro de estrategias
 app/evaluation/           métricas del banco de pruebas
 app/poc.py, app/eval.py   los CLIs
+app/api/main.py           API HTTP: token, límite de gasto, persistencia; envuelve lo anterior
+app/db.py, migrations/    SQLModel + Alembic (el API migra al arrancar)
 ```
 
 `recognition` y `verification` son **funciones puras sobre los modelos de `schemas.py`**: sin estado global, sin framework. La Fase 2 las envuelve en endpoints sin reescribirlas.
@@ -46,6 +49,7 @@ frontend/src/strokes/         formato de trazo, contorno, geometría, formas (pu
 frontend/src/canvas/          NotebookCanvas (imperativo), Toolbar, view (zoom/geometría de página)
 frontend/src/library/         biblioteca y acciones de datos (borrados en cascada)
 frontend/src/export/          PDF vectorial y JSON
+frontend/src/review/          cliente del API, imagen de la selección, panel y ajustes
 ```
 
 ## Decisiones tomadas
@@ -58,6 +62,7 @@ frontend/src/export/          PDF vectorial y JSON
 | [0004](docs/decisions/0004-eval-metrics.md) | Cómo se mide el eval |
 | [0005](docs/decisions/0005-structured-output.md) | Salida estructurada en vez de tool use |
 | [0006](docs/decisions/0006-fase1-frontend.md) | Lienzo imperativo, dos capas, coordenadas en puntos PDF, despliegue |
+| [0007](docs/decisions/0007-fase2-api.md) | API HTTP: token, límite de gasto, verificador precalentado, banco de pruebas con tinta real |
 
 ## Reglas que no son obvias en el código
 
@@ -73,6 +78,10 @@ frontend/src/export/          PDF vectorial y JSON
 10. **La dirección publicada no se cambia.** IndexedDB va ligado al origen: otra dirección deja vacía la app instalada en el iPad.
 11. **`wrangler` reescribe `package.json` y `vite.config.ts` si no encuentra `wrangler.jsonc`.** No borres ese archivo; si pasa, deshaz los cambios (versiones sin fijar).
 12. **El doble toque del Apple Pencil no llega a la web.** No lo prometas ni lo busques; ver ADR 0006.
+13. **`uv run pytest` falla en esta máquina** («trampoline failed»); usa `uv run python -m pytest`, y lo mismo con `ruff`, `uvicorn` y `alembic`.
+14. **`app/api/main.py` no lleva `from __future__ import annotations`**: FastAPI resuelve las anotaciones en tiempo de ejecución y las dependencias son locales a `create_app()`.
+15. **Cambios de tablas = migración nueva de Alembic** en `backend/migrations/versions/`; nunca `create_all`. En el frontend, tabla nueva = `db.version(n)` nueva en `db.ts`.
+16. **Un script que arranque el API en Windows necesita `if __name__ == "__main__":`**: el verificador usa subprocesos y sin la guarda el hijo vuelve a ejecutar el script.
 
 ## Idioma
 

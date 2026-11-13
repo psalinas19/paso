@@ -5,8 +5,8 @@
 # whether to trust it.
 #
 # source: Anthropic pricing documentation, via the claude-api skill
-# retrieved: 2026-06-24
-# checked_by: claude-code, 2026-09-17
+# retrieved: 2026-06-24; the 5.5 / 5.2 rows on 2026-11-03
+# checked_by: claude-code, 2026-11-12
 #
 # Re-check once per semester along with the dependency update (SPEC 12.7).
 
@@ -17,6 +17,21 @@ defaults:
   cache_read_multiplier: 0.1
 
 models:
+  claude-sonnet-5-5:
+    input_per_mtok: 2.00
+    output_per_mtok: 10.00
+    cache_read_multiplier: 0.05   # $0.10 per MTok
+  claude-opus-5-5:
+    input_per_mtok: 4.00
+    output_per_mtok: 20.00
+    cache_read_multiplier: 0.05   # $0.20 per MTok
+  claude-haiku-5-5:
+    input_per_mtok: 0.10
+    output_per_mtok: 0.50
+  claude-fable-5-2:
+    input_per_mtok: 8.00
+    output_per_mtok: 40.00
+    cache_read_multiplier: 0.025  # $0.20 per MTok
   claude-sonnet-5:
     input_per_mtok: 2.00
     output_per_mtok: 10.00

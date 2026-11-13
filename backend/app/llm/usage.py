@@ -40,8 +40,13 @@ def load_pricing(path: Path = PRICING_PATH) -> dict[str, ModelPrice]:
         prices[model] = ModelPrice(
             input_per_mtok=float(entry["input_per_mtok"]),
             output_per_mtok=float(entry["output_per_mtok"]),
-            cache_write_multiplier=float(defaults.get("cache_write_multiplier", 1.25)),
-            cache_read_multiplier=float(defaults.get("cache_read_multiplier", 0.1)),
+            # A model may override the default multipliers (e.g. cheaper cache reads).
+            cache_write_multiplier=float(
+                entry.get("cache_write_multiplier", defaults.get("cache_write_multiplier", 1.25))
+            ),
+            cache_read_multiplier=float(
+                entry.get("cache_read_multiplier", defaults.get("cache_read_multiplier", 0.1))
+            ),
         )
     return prices
 

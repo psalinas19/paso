@@ -139,7 +139,7 @@ body {
   color: #b42318;
 }
 
-.export {
+:is(.export, .sheet-dialog) {
   width: min(92vw, 420px);
   max-height: 86dvh;
   box-sizing: border-box;
@@ -150,16 +150,16 @@ body {
   box-shadow: 0 10px 40px rgb(0 0 0 / 0.25);
 }
 
-.export::backdrop {
+:is(.export, .sheet-dialog)::backdrop {
   background: rgb(20 26 40 / 0.35);
 }
 
-.export h2 {
+:is(.export, .sheet-dialog) h2 {
   margin: 0 0 8px;
   font-size: 20px;
 }
 
-.export ul {
+:is(.export, .sheet-dialog) ul {
   max-height: 40dvh;
   margin: 4px 0 12px;
   padding: 0;
@@ -168,7 +168,7 @@ body {
   border-block: 1px solid #edf0f5;
 }
 
-.export label {
+:is(.export, .sheet-dialog) label {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -176,22 +176,22 @@ body {
   font-size: 16px;
 }
 
-.export input[type="checkbox"] {
+:is(.export, .sheet-dialog) input[type="checkbox"] {
   width: 22px;
   height: 22px;
   accent-color: #1f2a44;
 }
 
-.export .muted {
+:is(.export, .sheet-dialog) .muted {
   color: #667085;
 }
 
-.export .row {
+:is(.export, .sheet-dialog) .row {
   display: flex;
   gap: 4px;
 }
 
-.export button {
+:is(.export, .sheet-dialog) button {
   min-height: 44px;
   padding: 0 14px;
   border: 0;
@@ -203,25 +203,194 @@ body {
   cursor: pointer;
 }
 
-.export > button {
+:is(.export, .sheet-dialog) > button {
   display: block;
   width: 100%;
   margin-top: 8px;
 }
 
-.export button.primary {
+:is(.export, .sheet-dialog) button.primary {
   background: #1f2a44;
   color: #fff;
 }
 
-.export button.quiet {
+:is(.export, .sheet-dialog) button.quiet {
   background: transparent;
   color: #475467;
 }
 
-.export button:disabled {
+:is(.export, .sheet-dialog) button:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.sheet-dialog label {
+  display: block;
+  margin-top: 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sheet-dialog input {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 0 12px;
+  border: 1px solid #c5ccd9;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 400;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.muted {
+  color: #667085;
+}
+
+.ok {
+  color: #16803c;
+}
+
+.bad {
+  color: #b42318;
+}
+
+.review-button {
+  width: auto;
+  padding: 0 14px;
+  background: #1f2a44;
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* --- review panel ------------------------------------------------------- */
+
+.review {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(400px, 92vw);
+  box-sizing: border-box;
+  padding: calc(12px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    calc(16px + env(safe-area-inset-bottom)) 16px;
+  overflow-y: auto;
+  background: #fff;
+  color: #1f2a44;
+  box-shadow: -2px 0 16px rgb(0 0 0 / 0.14);
+  font-size: 15px;
+  line-height: 1.45;
+  /* Explanations are text to read and copy, unlike the canvas. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.review header {
+  display: flex;
+  align-items: center;
+}
+
+.review h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 20px;
+}
+
+.review button {
+  min-height: 44px;
+  min-width: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #475467;
+  font: inherit;
+  cursor: pointer;
+}
+
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid #edf0f5;
+}
+
+.step > div {
+  min-width: 0;
+}
+
+.step .mark {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.step.correct .mark {
+  color: #16803c;
+}
+
+.step.error .mark {
+  color: #b42318;
+}
+
+.step.unverifiable .mark {
+  color: #b54708;
+}
+
+.step.error {
+  background: #fff5f4;
+}
+
+.step p {
+  margin: 4px 0 0;
+}
+
+.step .doubt {
+  color: #b54708;
+}
+
+.latex {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.latex .katex-display {
+  margin: 0;
+  text-align: left;
+}
+
+.review .cost {
+  margin-top: 16px;
+  font-size: 13px;
+}
+
+.history {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history button {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 0 4px;
+  border-top: 1px solid #edf0f5;
+  border-radius: 0;
+  color: #1f2a44;
+  text-align: left;
 }
 
 /* --- library ------------------------------------------------------------ */

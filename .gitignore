@@ -32,3 +32,6 @@ dist/
 
 # Cloudflare local state
 .wrangler/
+
+# Reviews database and uploaded images: runtime data, backed up separately (phase 5).
+backend/data/

@@ -4,6 +4,7 @@
 // event; routing them through React state would re-render per event and add
 // latency. React only owns the toolbar and talks to this class through methods.
 import { db, loadPages, loadStrokes, type Page } from "../db";
+import { selectionFrame } from "../review/frame";
 import { STROKE_FORMAT_VERSION, type Point, type Stroke } from "../strokes/format";
 import { boxOf, fractionInside, hitsStroke, inBox, unionBox, type Box, type XY } from "../strokes/geometry";
 import { outlinePoints, svgPath } from "../strokes/outline";
@@ -205,6 +206,28 @@ export class NotebookCanvas {
     p.page = { ...p.page, background: order[(order.indexOf(p.page.background) + 1) % 3] };
     db.pages.update(p.page.id, { background: p.page.background }).catch(() => this.events.onError("No se pudo guardar el fondo."));
     this.invalidate();
+  }
+
+  /**
+   * The lasso selection drawn as a PNG on white, for review, plus what is needed
+   * to file the result: the strokes themselves, their page and where they sit on it.
+   */
+  selectionSnapshot(): { image: Promise<Blob>; strokes: Stroke[]; pageId: string; box: Box } | null {
+    const sel = this.selection;
+    if (!sel) return null;
+    const frame = selectionFrame(sel.box);
+    const canvas = document.createElement("canvas");
+    canvas.width = frame.width;
+    canvas.height = frame.height;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, frame.width, frame.height);
+    ctx.setTransform(frame.scale, 0, 0, frame.scale, -frame.x * frame.scale, -frame.y * frame.scale);
+    for (const d of sel.items) paint(ctx, d.path, d.stroke.color, d.stroke.tool);
+    const image = new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("No se pudo crear la imagen."))), "image/png"),
+    );
+    return { image, strokes: sel.items.map((d) => d.stroke), pageId: this.pages[sel.page].page.id, box: sel.box };
   }
 
   /** Id of the page at the centre of the screen: the one page commands act on. */

@@ -1,0 +1,39 @@
+slug: general
+name: General
+notation: ""
+
+# For notebooks created with the generic template: no subject-specific notation,
+# every verification strategy that needs no special setup.
+complex_domain: false
+independent_vars: [x, t]
+
+strategies:
+  - expression
+  - equation
+  - system
+  - ode
+  - numeric_iteration
+
+tolerance:
+  absolute: 1.0e-9
+  relative: 1.0e-6
+  hand_rounding: 5.0e-3
+
+topics: []
+
+error_types:
+  - id: sign
+    label: Error de signo
+    description: Signo perdido o cambiado al pasar un término o al operar.
+  - id: algebra
+    label: Error algebraico
+    description: Factorización, distribución, exponentes o fracciones mal operados.
+  - id: arithmetic
+    label: Error aritmético
+    description: Una cuenta numérica mal hecha.
+  - id: concept
+    label: Error de concepto
+    description: Se aplicó un método o una regla que no corresponde.
+  - id: transcription
+    label: Error al copiar
+    description: Un término cambió al pasar de un renglón al siguiente.
