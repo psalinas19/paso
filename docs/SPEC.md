@@ -127,7 +127,9 @@ iPad (PWA)                                   Backend (FastAPI)
 - **Herramientas:** en una barra flotante centrada arriba, con plumas preconfiguradas que muestran su color (un toque cambia de pluma, sin abrir menús).
   - Pluma con 3 grosores y 4 colores.
   - Resaltador.
-  - Borrador por trazo.
+  - Borrador por trazo. Modo de **un solo uso**: se activa, borra y al levantar el lápiz vuelve sola la pluma anterior.
+    - El doble toque del Apple Pencil **no llega a las páginas web** (Safari no lo expone; solo las apps nativas lo reciben), así que el borrador se activa desde la pantalla. Si algún día hay app nativa (12.8), el doble toque se conecta a este mismo modo.
+  - **Formas por pausa:** si trazo una línea y mantengo el lápiz quieto sin levantarlo, el trazo se endereza en una recta perfecta; mientras sigo sin levantar, puedo mover el extremo para alargarla o girarla. Lo mismo para círculo, triángulo y rectángulo. Una forma ya hecha se mueve y se estira con el lazo.
   - Lazo para seleccionar, mover o borrar.
   - Deshacer/rehacer.
 - **Ajustes de Safari:** `touch-action: none` en el canvas y desactivar la selección de texto y el menú contextual de iOS.

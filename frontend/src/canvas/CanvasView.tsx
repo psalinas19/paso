@@ -151,8 +151,12 @@ export function CanvasView({ page, onError }: { page: Page; onError: (message: s
       // The palm often lands before the tip: drop whatever gesture it started.
       touches.clear();
       stopGlide();
-      host.setPointerCapture(e.pointerId);
       current = { id: e.pointerId, points: [point(e)] };
+      try {
+        host.setPointerCapture(e.pointerId);
+      } catch {
+        // Capture is a nicety (the host is full-screen); failing to get it must not drop the stroke.
+      }
       lastPen = performance.now();
       drawLive();
     }
@@ -200,6 +204,13 @@ export function CanvasView({ page, onError }: { page: Page; onError: (message: s
       }
       if (!current || current.id !== e.pointerId) return;
       // pointercancel ends here too: keep what was written rather than drop it.
+      if (e.type === "pointerup") {
+        // The lift position only arrives with pointerup. Without it a fast stroke
+        // ends short of where the pen left the glass. Pressure is 0 on lift, so reuse the last one.
+        const [x, y] = toPage(view, ...pos(e));
+        const last = current.points[current.points.length - 1];
+        if (x !== last[0] || y !== last[1]) current.points.push([x, y, last[2]]);
+      }
       const stroke: Stroke = {
         format_version: STROKE_FORMAT_VERSION,
         id: crypto.randomUUID(),

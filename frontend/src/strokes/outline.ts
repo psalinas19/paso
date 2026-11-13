@@ -10,7 +10,9 @@ export function outlinePoints(points: Point[], size: number, done = true): numbe
     size,
     thinning: 0.3,
     smoothing: 0.5,
-    streamline: 0.3,
+    // 0 on purpose: streamline drags each point toward the previous one, which
+    // cuts ~25% off every corner when a fast stroke leaves samples far apart.
+    streamline: 0,
     simulatePressure: false,
     last: done,
   });
