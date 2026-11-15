@@ -1,6 +1,6 @@
 # Plan de la Fase 4: banco de errores, repaso, búsqueda, exportar y graficar
 
-**Fecha:** 2026-11-15 · **Estado:** arrancada por indicación tuya («empieza con la fase 4»). **4a a 4d construidas** (ADR 0011, 0012 y 0013), probadas en navegador con el modelo simulado; falta 4e (graficar). Las decisiones de abajo se tomaron con mi recomendación; cualquiera se puede cambiar.
+**Fecha:** 2026-11-15 · **Estado:** arrancada por indicación tuya («empieza con la fase 4»). **Las cinco entregas están construidas** (ADR 0011 a 0014), probadas en navegador de escritorio con el modelo simulado. Falta probarlas en el iPad y con el modelo real. Las decisiones de abajo se tomaron con mi recomendación; cualquiera se puede cambiar.
 
 ## Qué cubre
 

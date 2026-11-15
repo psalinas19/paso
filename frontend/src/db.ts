@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from "dexie";
 import type { BankError, ChatMessage, CheckResponse, Exercise, Explanation, Hint, PracticeProgress, Solution } from "./review/api";
+import type { PlotTree, PlotView } from "./plot/evaluate";
 import type { Stroke } from "./strokes/format";
 
 export interface Semester {
@@ -95,6 +96,22 @@ export interface PracticeRound {
   cost_usd: number;
 }
 
+/** A graph of a handwritten equation (SPEC 6.10), kept with its page so it opens offline. */
+export interface SavedPlot {
+  id: string;
+  notebook_id: string;
+  page_id: string;
+  created_at: number;
+  /** The equation as it was read, and what the curve gives and depends on. */
+  latex: string;
+  label: string;
+  variable: string;
+  /** The expression, as the tree the card evaluates. */
+  tree: PlotTree;
+  /** Where it was last left: zoom and position. */
+  view: PlotView;
+}
+
 export const db = new Dexie("paso") as Dexie & {
   semesters: EntityTable<Semester, "id">;
   subjects: EntityTable<Subject, "id">;
@@ -106,6 +123,7 @@ export const db = new Dexie("paso") as Dexie & {
   /** A copy of the error bank, which lives in the backend, to read it offline. */
   errors: EntityTable<BankError, "id">;
   practice: EntityTable<PracticeRound, "id">;
+  plots: EntityTable<SavedPlot, "id">;
 };
 
 // Schema changes go in a new .version(n) with an upgrade function; never edit this one.
@@ -136,6 +154,11 @@ db.version(4).stores({
 // v5 (phase 4): rounds of practice, and which page holds each exercise.
 db.version(5).stores({
   practice: "id, notebook_id, created_at",
+});
+
+// v6 (phase 4): graphs of handwritten equations.
+db.version(6).stores({
+  plots: "id, notebook_id, created_at",
 });
 
 /** Strokes of a page in drawing order. */

@@ -270,6 +270,16 @@ En **Mis errores**, cada materia con errores pendientes tiene un botón **Repasa
 - **Modo examen** (casilla al empezar): no hay pista, explicación, solución ni chat hasta que entregues un desarrollo de ese ejercicio.
 - En **Mis errores** verás el último repaso de cada materia y un botón para retomarlo donde lo dejaste.
 
+### Graficar una ecuación
+
+Rodea con el lazo una ecuación de la forma `y = f(x)` (o `f(t)`, o solo la expresión) y toca **Graficar**. La app la lee y abre una tarjeta con la gráfica.
+
+- Un dedo la desplaza, dos dedos (o **＋ / －**) hacen zoom, un toque lee el valor en ese punto. **Restablecer** vuelve a la vista inicial. Hay una tabla de valores.
+- Arrastra la tarjeta por su encabezado para ponerla junto a tu ecuación. **Fijar** la deja abierta mientras escribes.
+- Leer la ecuación cuesta como una revisión y necesita conexión. La gráfica queda guardada en el iPad: **⋯ → Gráficas guardadas** la reabre, también sin conexión.
+- Si no se puede graficar (no está despejada, tiene más de una variable, es una integral sin resolver…), la app dice por qué y no dibuja nada.
+- La gráfica se calcula con la ecuación **como se leyó**, que aparece arriba de la tarjeta. Si no es la tuya, la lectura falló.
+
 ### Buscar
 
 En la biblioteca, **Buscar** encuentra una revisión por lo que dice: lo que se leyó de tu desarrollo, la pista, la explicación, la solución o el chat. Escribe una o varias palabras (deben aparecer todas; los acentos dan igual) y toca el resultado para abrir el cuaderno en esa página con la revisión abierta.
@@ -325,6 +335,6 @@ Hay además un plan pendiente de tu aprobación sobre gestos de la libreta y la 
 
 **Fase 3 construida** (explicación, solución, chat y cola sin conexión), pendiente de probar con el modelo real.
 
-**Fase 4 en curso** ([plan](docs/plan-fase4.md)): el banco de errores, el modo repaso, la búsqueda y la exportación a LaTeX están construidos, sin probar con el modelo real ni en el iPad. Falta graficar.
+**Fase 4 en curso** ([plan](docs/plan-fase4.md)): las cinco entregas están construidas (banco de errores, modo repaso, búsqueda, exportar a LaTeX y graficar), probadas en un navegador de escritorio con el modelo simulado. Falta lo de siempre: probarlas en el iPad y con el modelo real.
 
 Después, la Fase 5 (backend en un servidor para no depender de la laptop, respaldo automático, archivar semestres), según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.

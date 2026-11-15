@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { db, loadPages, type Review } from "../db";
+import { db, loadPages, type Review, type SavedPlot } from "../db";
+import { fitView, type PlotView } from "../plot/evaluate";
+import { PlotCard } from "../plot/PlotCard";
+import { PlotsPanel } from "../plot/PlotsPanel";
 import { ExportDialog } from "../export/ExportDialog";
 import { useLiveQuery } from "dexie-react-hooks";
-import { loadConfig, postCheck, postCorrection, postExplain, postHint, postSolve, streamChat, type CheckResponse } from "../review/api";
+import { loadConfig, postCheck, postPlot, postCorrection, postExplain, postHint, postSolve, streamChat, type CheckResponse } from "../review/api";
 import { enqueue, sendQueued, toReview } from "../review/queue";
 import { changeInBank, followReview, refreshBank, removeFromBank, saveToBank } from "../errors/bank";
 import { ExerciseBar } from "../practice/ExerciseBar";
@@ -61,6 +64,14 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
   const rounds = useLiveQuery(() => db.practice.where("notebook_id").equals(notebookId).toArray(), [notebookId]);
   const pageIds = useLiveQuery(() => loadPages(notebookId).then((pages) => pages.map((p) => p.id)), [notebookId, revision, where.total]);
   const practising = rounds?.length ? exerciseOnPage(rounds, pageIds?.[where.current - 1]) : undefined;
+  // The graph open over the page, the list of saved ones, and a reading in progress.
+  const [graph, setGraph] = useState<SavedPlot | null>(null);
+  const [graphPinned, setGraphPinned] = useState(false);
+  const graphPinnedRef = useRef(false);
+  graphPinnedRef.current = graphPinned;
+  const [graphsOpen, setGraphsOpen] = useState(false);
+  const [plotting, setPlotting] = useState(false);
+  const graphs = useLiveQuery(() => db.plots.where("notebook_id").equals(notebookId).count(), [notebookId]) ?? 0;
   const [backOnline, setBackOnline] = useState(false);
   useEffect(() => {
     // Arriving from a search hit: show the review that matched.
@@ -101,6 +112,7 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
       // Writing again puts an unpinned card away: it would be in the way of the pen.
       onInk: () => {
         if (!pinnedRef.current) setCard(null);
+        if (!graphPinnedRef.current) setGraph(null);
       },
     }, startPageId);
     canvas.current = c;
@@ -131,10 +143,7 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
     if (!snapshot) return;
     setPanel({ kind: "loading", since: Date.now() });
     const selection = { notebookId, pageId: snapshot.pageId, box: snapshot.box, strokes: snapshot.strokes };
-    // The subject of the notebook decides notation and which checks apply.
-    const notebook = await db.notebooks.get(notebookId);
-    const subject = notebook && (await db.subjects.get(notebook.subject_id));
-    const slug = !subject || subject.template === "generic" ? "general" : subject.template;
+    const slug = await subjectSlug();
     const image = await snapshot.image;
     // A review of a practice page is an attempt at its exercise: the backend keeps score.
     const exerciseId = rounds?.length ? exerciseOnPage(rounds, snapshot.pageId)?.exercise.id : undefined;
@@ -156,6 +165,37 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
       // The backend could not be reached at all: nothing was spent, so the request is worth keeping.
       if (message.startsWith("No se pudo conectar") || message.startsWith("Sin conexión")) await park("No se pudo conectar con el backend.");
       else setPanel({ kind: "error", message });
+    }
+  };
+  /** The slug the backend reads this notebook's subject as: it decides notation and checks. */
+  const subjectSlug = async () => {
+    const notebook = await db.notebooks.get(notebookId);
+    const subject = notebook && (await db.subjects.get(notebook.subject_id));
+    return !subject || subject.template === "generic" ? "general" : subject.template;
+  };
+  /** Read the selected equation and open its graph (SPEC 6.10). The graph is kept with the page. */
+  const plot = async () => {
+    const snapshot = canvas.current?.selectionSnapshot();
+    if (!snapshot || plotting) return;
+    setPlotting(true);
+    try {
+      const found = await postPlot(loadConfig(), await snapshot.image, await subjectSlug());
+      if (!found.plottable || !found.tree) {
+        // Said plainly, with what it cost: nothing is drawn rather than something made up.
+        onError(`No puedo graficarla: ${found.reason}. (Leerla costó ${found.cost_usd.toFixed(3)} USD.)`);
+        return;
+      }
+      const saved: SavedPlot = {
+        id: crypto.randomUUID(), notebook_id: notebookId, page_id: snapshot.pageId, created_at: Date.now(),
+        latex: found.latex, label: found.label, variable: found.variable, tree: found.tree, view: fitView(found.tree),
+      };
+      await db.plots.put(saved);
+      setGraphPinned(false);
+      setGraph(saved);
+    } catch (error) {
+      onError((error as Error).message);
+    } finally {
+      setPlotting(false);
     }
   };
   /** An answer that scored a practice attempt: update the round, and the bank if a mistake was overcome. */
@@ -220,6 +260,7 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
     { label: "Exportar…", run: () => setExporting(true) },
     { label: "Revisiones guardadas", run: () => setPanel({ kind: "history" }) },
     { label: waiting ? `Revisiones en espera (${waiting})` : "Revisiones en espera", run: () => setPanel({ kind: "queue" }) },
+    { label: graphs ? `Gráficas guardadas (${graphs})` : "Gráficas guardadas", run: () => setGraphsOpen(true) },
     { label: "Ajustes de revisión…", run: () => setSettings(true) },
     {
       label: gestures ? "Gestos de deshacer: activados (tocar para apagar)" : "Gestos de deshacer: apagados (tocar para activar)",
@@ -265,10 +306,32 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
         onDeleteSelection={() => canvas.current?.deleteSelection()}
         onDuplicateSelection={() => canvas.current?.duplicateSelection()}
         onReview={() => void review()}
+        onPlot={() => void plot()}
         onBackground={() => canvas.current?.cycleBackground()}
         onLibrary={onLibrary}
         menu={menu}
       />
+      {plotting && <div className="banner" role="status">Leyendo la ecuación para graficarla…</div>}
+      {graph && (
+        <PlotCard
+          key={graph.id}
+          plot={graph}
+          pinned={graphPinned}
+          onPin={() => setGraphPinned((p) => !p)}
+          onView={(view: PlotView) => void db.plots.update(graph.id, { view })}
+          onClose={() => setGraph(null)}
+        />
+      )}
+      {graphsOpen && (
+        <PlotsPanel
+          notebookId={notebookId}
+          onOpen={(saved) => {
+            setGraph(saved);
+            setGraphsOpen(false);
+          }}
+          onClose={() => setGraphsOpen(false)}
+        />
+      )}
       {practising && <ExerciseBar key={practising.exercise.id} {...practising} />}
       {pagesOpen && (
         <PagesPanel

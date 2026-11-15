@@ -29,6 +29,8 @@ interface Props {
   onDeleteSelection(): void;
   onDuplicateSelection(): void;
   onReview(): void;
+  /** Draw the graph of the selected equation. */
+  onPlot(): void;
   onBackground(): void;
   onLibrary(): void;
   /** Entries of the "more" menu: page and export commands. */
@@ -94,6 +96,11 @@ export function Toolbar(p: Props) {
       {p.hasSelection && (
         <button type="button" className="tool review-button" onClick={p.onReview}>
           Revisar
+        </button>
+      )}
+      {p.hasSelection && (
+        <button type="button" className="tool plot-button" onClick={p.onPlot}>
+          Graficar
         </button>
       )}
       {p.hasSelection && (

@@ -351,6 +351,30 @@ export const searchReviews = (config: BackendConfig, query: string) =>
 /** A review as the backend holds it, for one that is not kept on this device. */
 export const getCheck = (config: BackendConfig, checkId: string) => call<CheckResponse>(config, `/api/checks/${encodeURIComponent(checkId)}`);
 
+// --- graphing (SPEC 6.10) ---
+
+/** What "Graficar" gives back: how to draw the equation, or why it cannot be drawn. */
+export interface PlotResponse {
+  plottable: boolean;
+  reason: string;
+  /** The equation as it was read. */
+  latex: string;
+  /** LaTeX of what the curve gives (the "y"), and the name of its variable. */
+  label: string;
+  variable: string;
+  tree: import("../plot/evaluate").PlotTree | null;
+  cost_usd: number;
+  usage: UsageSummary;
+}
+
+/** Read the selected equation so it can be drawn. Reading costs like a review. */
+export function postPlot(config: BackendConfig, image: Blob, subject: string): Promise<PlotResponse> {
+  const body = new FormData();
+  body.append("image", image, "selection.png");
+  body.append("subject", subject);
+  return call<PlotResponse>(config, "/api/plot", { method: "POST", body });
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
