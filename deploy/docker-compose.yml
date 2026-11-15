@@ -1,0 +1,40 @@
+# Paso on a small server you rent (option B of docs/despliegue.md).
+#
+#   cd deploy
+#   cp ../backend/.env.example .env      # then fill it in
+#   docker compose up -d --build
+#
+# Caddy gets and renews the HTTPS certificate on its own; it needs ports 80 and
+# 443 open and PASO_DOMAIN pointing at this server.
+services:
+  api:
+    build: ../backend
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - paso-data:/data
+      - paso-backups:/backups
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/ping')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PASO_DOMAIN: ${PASO_DOMAIN:?Pon PASO_DOMAIN en deploy/.env, por ejemplo paso-tuyo.duckdns.org}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - api
+
+volumes:
+  paso-data:
+  paso-backups:
+  caddy-data:

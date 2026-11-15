@@ -1418,3 +1418,10 @@ def test_a_laptop_makes_no_backups_and_says_so(client, settings):
     assert state == {"enabled": False, "offsite": False, "ok": None, "at": None, "detail": ""}
     assert not settings.resolved_backup_dir.exists()
     assert client.get("/api/backup/status").status_code == 401
+
+
+def test_the_host_can_check_the_process_is_up_without_the_token(settings, provider):
+    # Even a server with no token configured answers the ping, and only the ping.
+    bare = TestClient(create_app(settings.model_copy(update={"app_token": ""}), provider))
+    assert bare.get("/api/ping").json() == {"ok": True}
+    assert bare.get("/api/health").status_code == 503

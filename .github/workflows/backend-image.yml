@@ -1,0 +1,28 @@
+# Builds the backend image and proves it can be deleted and restored from a
+# backup. The only check of the deployment that needs no server and no secrets.
+name: backend image
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - "deploy/**"
+      - ".github/workflows/backend-image.yml"
+  workflow_dispatch:
+
+jobs:
+  build-and-restore:
+    # Private repositories pay for runner minutes; skip rather than fail there.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t paso-backend backend
+      - name: Delete the server and restore it from the backup
+        run: deploy/prueba-restauracion.sh
+      - name: The compose file is valid
+        run: |
+          cp backend/.env.example deploy/.env
+          PASO_DOMAIN=example.duckdns.org docker compose -f deploy/docker-compose.yml config --quiet

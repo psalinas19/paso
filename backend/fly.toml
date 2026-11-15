@@ -1,0 +1,45 @@
+# Paso on Fly.io (option A of docs/despliegue.md). From backend/:
+#
+#   fly launch --no-deploy --copy-config --name <a-name-of-yours>
+#   fly volumes create paso_data --size 3
+#   fly secrets set ANTHROPIC_API_KEY=... APP_TOKEN=...
+#   fly deploy
+#
+# `app` is replaced by the name you choose at launch.
+app = "paso-backend"
+# qro is Querétaro, the closest to Mexico City. Compute prices differ by region.
+primary_region = "qro"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # One disk holds both: Fly attaches a single volume to a machine. The copy
+  # that survives losing this server is the one BACKUP_REMOTE sends elsewhere.
+  DATA_DIR = "/data/paso"
+  BACKUP_DIR = "/data/backups"
+  MONTHLY_BUDGET_USD = "20"
+
+[mounts]
+  source = "paso_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # Always on: a stopped machine makes no backups, and the first review after a
+  # stop would wait for the verifier to warm up.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/api/ping"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

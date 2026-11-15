@@ -243,6 +243,12 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
             ).one(),
         )
 
+    @app.get("/api/ping")
+    def ping() -> dict[str, bool]:
+        """For the host's health check: says the process is up, and nothing else.
+        The only route without the token, so it must never say more than this."""
+        return {"ok": True}
+
     @app.get("/api/health", dependencies=auth)
     def health() -> dict[str, bool]:
         return {"ok": True}

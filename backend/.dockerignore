@@ -1,0 +1,14 @@
+# Only what the image needs goes in; above all, never the secrets or the data.
+.env
+*.env
+.venv/
+.cache/
+data/
+backups/
+eval/
+tests/
+usage.jsonl
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/

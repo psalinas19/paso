@@ -201,7 +201,11 @@ def restore(settings: Settings, archive: Path, force: bool = False) -> Path | No
         raise BackupError(f"No encuentro el respaldo {archive}.")
     data = settings.data_dir
     database = _database_file(settings)
-    with tempfile.TemporaryDirectory(dir=data.parent if data.parent.exists() else None) as work:
+    # Unpacked, and the old data set aside, inside the backup folder: in a
+    # container that and the data directory are the only places we may write.
+    scratch = settings.resolved_backup_dir
+    scratch.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=scratch) as work:
         try:
             with tarfile.open(archive, "r:gz") as tar:
                 # "data": no absolute paths, no "..", no links out, no devices.
@@ -224,7 +228,7 @@ def restore(settings: Settings, archive: Path, force: bool = False) -> Path | No
                     f"Ya hay datos en {data}. Usa --force para reemplazarlos: lo que hay "
                     "se aparta a una carpeta, no se borra."
                 )
-            aside = data.parent / f"{data.name}.antes-de-restaurar-{datetime.now(UTC):{STAMP}}"
+            aside = scratch / f"antes-de-restaurar-{datetime.now(UTC):{STAMP}}"
             aside.mkdir(parents=True)
             for item in [database, *(data / f for f in FOLDERS)]:
                 if item.exists():
