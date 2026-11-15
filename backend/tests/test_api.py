@@ -32,6 +32,8 @@ class FakeProvider:
         self.rebuilt = ("Eq(x, 3)", ["s2"])
         #: What the model says when asked for a hint: (step_id, error_type, text).
         self.hint = ("s1", "arithmetic", "Revisa la división del paso 3.")
+        #: The topic the model files the mistake under.
+        self.hint_topic = None
         self.instructions: list[str] = []
         self.hint_images: list[object] = []
         self.fail = False
@@ -87,6 +89,7 @@ class FakeProvider:
             error_type=error_type,
             hint=text,
             usage=Usage(endpoint="hint", model=self.model, cost_usd=0.02),
+            topic=self.hint_topic,
         )
 
     def explain(self, system_prompt, instruction, image):
@@ -764,3 +767,165 @@ def test_chat_respects_token_budget_and_limits(client, settings, provider):
         db.commit()
     assert say(client, first["id"], "hola").status_code == 402
     assert provider.calls == calls
+
+
+# --- the error bank (4a) ------------------------------------------------------
+
+
+def save_error(client, check_id, step_id, **fields):
+    body = {"check_id": check_id, "step_id": step_id, **fields}
+    return client.post("/api/errors", headers=AUTH, json=body)
+
+
+def bank(client) -> list[dict]:
+    return client.get("/api/errors", headers=AUTH).json()["errors"]
+
+
+def test_a_proved_mistake_is_saved_with_what_the_verifier_said(client, provider):
+    first = post_check(client).json()
+
+    response = save_error(client, first["id"], "s3", subject_name="Álgebra 2026-2")
+    assert response.status_code == 200, response.text
+    entry = response.json()
+
+    assert (entry["check_id"], entry["step_id"]) == (first["id"], "s3")
+    assert (entry["subject"], entry["subject_name"]) == ("general", "Álgebra 2026-2")
+    assert entry["proved"] is True and entry["resolved"] is False
+    assert entry["latex"] and entry["detail"]
+    # No hint was asked for, so nothing proposed a classification, and nothing was paid.
+    assert entry["error_type"] is None and entry["topic"] is None
+    assert provider.calls == 1
+    assert entry["created_at"].endswith(("Z", "+00:00"))
+    assert bank(client) == [entry]
+
+    # Saving the same step again changes the entry; it does not add another.
+    again = save_error(client, first["id"], "s3", error_type="arithmetic").json()
+    assert again["id"] == entry["id"] and again["error_label"] == "Error aritmético"
+    assert again["subject_name"] == "Álgebra 2026-2"
+    assert len(bank(client)) == 1
+    # Every answer about the review now says which of its steps are in the bank.
+    assert [e["id"] for e in ask_hint(client, first["id"]).json()["errors"]] == [entry["id"]]
+
+
+def test_a_step_that_was_proved_correct_cannot_enter_the_bank(client):
+    first = post_check(client).json()
+    assert statuses(first)["s2"] == "correct"
+
+    response = save_error(client, first["id"], "s2")
+
+    assert response.status_code == 422 and "correcto" in response.json()["detail"]
+    assert bank(client) == []
+
+
+def test_the_bank_takes_the_classification_the_hint_proposed(client, provider):
+    first = post_check(client, data={"subject": "ed"}).json()
+    provider.hint = ("s3", "algebra", "Revisa el despeje.")
+    provider.hint_topic = "edo-lineal"
+    hint = ask_hint(client, first["id"]).json()["hint"]
+    assert hint["topic"] == "edo-lineal"
+
+    entry = save_error(client, first["id"], "s3").json()
+
+    assert (entry["error_type"], entry["error_label"]) == ("algebra", "Álgebra")
+    assert entry["topic"] == "edo-lineal"
+    # With no name sent, the bank files it under the subject's own name.
+    assert entry["subject_name"] == "Ecuaciones Diferenciales"
+
+
+def test_a_topic_outside_the_subject_list_is_dropped_from_the_hint(client, provider):
+    first = post_check(client, data={"subject": "ed"}).json()
+    provider.hint = ("s3", "algebra", "Revisa el despeje.")
+    provider.hint_topic = "made-up-topic"
+
+    assert ask_hint(client, first["id"]).json()["hint"]["topic"] is None
+
+
+def test_an_entry_can_be_reclassified_marked_overcome_and_removed(client):
+    first = post_check(client).json()
+    entry = save_error(client, first["id"], "s3", error_type="sign", topic="despejes").json()
+    url = f"/api/errors/{entry['id']}"
+
+    changed = client.patch(url, headers=AUTH, json={"error_type": "arithmetic", "resolved": True})
+    assert changed.status_code == 200, changed.text
+    assert (changed.json()["error_type"], changed.json()["resolved"]) == ("arithmetic", True)
+    assert changed.json()["topic"] == "despejes"  # not sent: left alone
+
+    cleared = client.patch(url, headers=AUTH, json={"error_type": None, "topic": ""}).json()
+    assert cleared["error_type"] is None and cleared["topic"] is None
+    assert cleared["resolved"] is True
+
+    assert client.patch(url, headers=AUTH, json={"error_type": "nope"}).status_code == 422
+    assert client.patch(url, headers=AUTH, json={"topic": "x" * 61}).status_code == 422
+    assert client.patch(url, headers=AUTH, json={"latex": "x"}).status_code == 422
+
+    assert client.delete(url, headers=AUTH).json() == {"ok": True}
+    assert bank(client) == []
+    assert client.delete(url, headers=AUTH).status_code == 404
+    assert client.patch(url, headers=AUTH, json={"resolved": False}).status_code == 404
+
+
+def test_fixing_a_misread_step_takes_its_false_mistake_out_of_the_bank(client, provider):
+    first = post_check(client).json()
+    save_error(client, first["id"], "s3")
+    assert len(bank(client)) == 1
+
+    # The line really said x = 3: the "mistake" was the reading, not the student.
+    provider.rebuilt = ("Eq(x, 3)", ["s2"])
+    body = correct(client, first["id"], "s3", "x = 3").json()
+
+    assert statuses(body)["s3"] == "correct"
+    assert body["errors"] == [] and bank(client) == []
+
+
+def test_a_correction_that_is_still_wrong_keeps_the_entry_up_to_date(client, provider):
+    first = post_check(client).json()
+    save_error(client, first["id"], "s3")
+
+    provider.rebuilt = ("Eq(x, 5)", ["s2"])
+    body = correct(client, first["id"], "s3", "x = 5").json()
+
+    assert statuses(body)["s3"] == "error"
+    assert [e["latex"] for e in body["errors"]] == ["x = 5"]
+    assert bank(client)[0]["proved"] is True
+
+
+def test_the_bank_refuses_unknown_reviews_steps_types_and_callers(client):
+    first = post_check(client).json()
+
+    assert save_error(client, "nope", "s3").status_code == 404
+    assert save_error(client, first["id"], "s9").status_code == 404
+    assert save_error(client, first["id"], "s3", error_type="made_up").status_code == 422
+    assert save_error(client, first["id"], "s3", subject_name="x" * 81).status_code == 422
+    assert bank(client) == []
+    for call in (
+        lambda: client.get("/api/errors"),
+        lambda: client.get("/api/taxonomy"),
+        lambda: client.post("/api/errors", json={"check_id": first["id"], "step_id": "s3"}),
+        lambda: client.patch("/api/errors/1", json={"resolved": True}),
+        lambda: client.delete("/api/errors/1"),
+    ):
+        assert call().status_code == 401
+
+
+def test_the_taxonomy_lists_every_subject_for_the_pickers(client):
+    subjects = {s["slug"]: s for s in client.get("/api/taxonomy", headers=AUTH).json()["subjects"]}
+
+    assert {"general", "ed", "circuitos1"} <= set(subjects)
+    assert "edo-lineal" in subjects["ed"]["topics"]
+    assert {"id": "sign", "label": "Error de signo"}.items() <= subjects["ed"]["error_types"][
+        0
+    ].items()
+
+
+def test_the_browser_may_send_json_and_use_patch_and_delete(client):
+    for method in ("PATCH", "DELETE", "POST"):
+        allowed = client.options(
+            "/api/errors/1",
+            headers={
+                "Origin": "https://paso-libreta.paso-frontend.workers.dev",
+                "Access-Control-Request-Method": method,
+                "Access-Control-Request-Headers": "authorization,content-type",
+            },
+        )
+        assert allowed.status_code == 200, method
+        assert method in allowed.headers["access-control-allow-methods"]

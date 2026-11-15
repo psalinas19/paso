@@ -230,6 +230,9 @@ class Hint(BaseModel):
         default=None, description="Id from the subject's taxonomy, proposed by the model."
     )
     error_label: str | None = None
+    topic: str | None = Field(
+        default=None, description="Tag from the subject's topics, proposed by the model."
+    )
     model: str = ""
     prompt_version: str = ""
 

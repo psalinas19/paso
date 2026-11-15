@@ -102,6 +102,7 @@ class AnthropicProvider(LLMProvider):
             error_type=payload.error_type,
             hint=payload.hint,
             usage=usage,
+            topic=payload.topic,
         )
 
     def explain(

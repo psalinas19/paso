@@ -36,6 +36,8 @@ def build_prompt(subject: SubjectConfig) -> PromptSpec:
         subject_name=subject.name,
         notation_line=f" — notación de {subject.notation}" if subject.notation else "",
         error_types=error_types or "(esta materia no define tipos; usa null)",
+        topics="\n".join(f"- `{t}`" for t in subject.topics)
+        or "(esta materia no define temas; usa null)",
         tutor_notes=subject.tutor_notes.strip() or "(sin notas específicas)",
     )
 
@@ -105,6 +107,7 @@ def build_hint(
 
     known = {e.id: e.label for e in subject.error_types}
     error_type = draft.error_type if draft.error_type in known else None
+    topic = draft.topic if draft.topic in subject.topics else None
     text = draft.hint.strip()
 
     if first_error is not None:
@@ -132,7 +135,7 @@ def build_hint(
             # The model saw nothing, or pointed at a step the verifier proved
             # correct (or one that does not exist). Either way there is nothing
             # we are willing to show as a mistake.
-            step_id, basis, text, error_type = None, HintBasis.NONE, "", None
+            step_id, basis, text, error_type, topic = None, HintBasis.NONE, "", None, None
 
     return (
         Hint(
@@ -142,6 +145,7 @@ def build_hint(
             hint=text,
             error_type=error_type,
             error_label=known.get(error_type) if error_type else None,
+            topic=topic,
             model=provider.model,
             prompt_version=prompt.version,
         ),

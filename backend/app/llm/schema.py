@@ -75,6 +75,10 @@ class HintPayload(BaseModel):
         description="Id of the error type from the list in the instructions, or null "
         "if none fits or there is no mistake."
     )
+    topic: str | None = Field(
+        description="The topic this mistake belongs to, from the list in the instructions, "
+        "or null if none fits, the subject lists none or there is no mistake."
+    )
     hint: str = Field(
         description="The hint, in Spanish. Never the corrected step or the final answer. "
         "Empty if there is no mistake."

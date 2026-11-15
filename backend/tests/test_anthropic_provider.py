@@ -64,13 +64,16 @@ def test_restructuring_is_a_text_only_structured_call():
 
 
 def test_a_hint_sends_the_ink_when_there_is_one():
-    payload = HintPayload(step_id="s3", error_type="sign", hint="Revisa el signo.")
+    payload = HintPayload(
+        step_id="s3", error_type="sign", topic="edo-lineal", hint="Revisa el signo."
+    )
     provider, messages = provider_with(payload)
     image = PreparedImage(data=b"png-bytes", media_type="image/png", width=10, height=10)
 
     draft = provider.write_hint(PROMPT, "the instruction", image)
 
     assert (draft.step_id, draft.error_type, draft.hint) == ("s3", "sign", "Revisa el signo.")
+    assert draft.topic == "edo-lineal"
     assert draft.usage.endpoint == "hint"
     kinds = [block["type"] for block in messages.request["messages"][0]["content"]]
     assert kinds == ["image", "text"]
@@ -132,7 +135,7 @@ def test_explaining_and_solving_are_structured_calls_with_their_own_schemas():
 
 
 def test_effort_is_sent_only_when_configured():
-    payload = HintPayload(step_id=None, error_type=None, hint="")
+    payload = HintPayload(step_id=None, error_type=None, topic=None, hint="")
     messages = FakeMessages(payload)
     client = SimpleNamespace(messages=messages)
 

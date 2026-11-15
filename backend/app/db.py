@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from alembic import command
 from alembic.config import Config
 from pydantic import TypeAdapter
-from sqlalchemy import Engine, func
+from sqlalchemy import Engine, UniqueConstraint, func
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 from app.config import MIGRATIONS_DIR
@@ -60,6 +60,34 @@ class ChatMessage(SQLModel, table=True):
     role: str  # "user" or "assistant"
     content: str
     created_at: datetime = Field(default_factory=_now)
+
+
+class ErrorEntry(SQLModel, table=True):
+    """One mistake the student confirmed as theirs (SPEC 6.6): the error bank.
+
+    A snapshot, not a pointer: the step and what the verifier said are copied
+    so the bank can be read without the review, and offline on the iPad.
+    """
+
+    __table_args__ = (UniqueConstraint("check_id", "step_id", name="uq_errorentry_step"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    check_id: str = Field(index=True)
+    step_id: str
+    #: Slug of the subject configuration: decides the taxonomy.
+    subject: str = Field(index=True)
+    #: The subject as the student named it in the library; what the bank groups by.
+    subject_name: str
+    topic: str | None = None
+    #: Id from the subject's taxonomy, or null while unclassified.
+    error_type: str | None = None
+    latex: str
+    detail: str = ""
+    #: True when the verifier proved the step wrong; false when it could not
+    #: check it and the mistake is the student's (or the model's) judgement.
+    proved: bool
+    resolved: bool = False
+    created_at: datetime = Field(default_factory=_now, index=True)
 
 
 class UsageLog(SQLModel, table=True):

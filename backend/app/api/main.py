@@ -28,6 +28,7 @@ from PIL import UnidentifiedImageError
 from pydantic import BaseModel
 from sqlmodel import Session, func, select
 
+from app.api.errors import ErrorOut, add_error_routes, entries_of, follow_correction
 from app.cli_common import MissingApiKeyError, build_provider
 from app.config import Settings, get_settings
 from app.db import (
@@ -105,6 +106,8 @@ class CheckResponse(BaseModel):
     hint: Hint | None = None
     explanation: Explanation | None = None
     solution: Solution | None = None
+    #: The steps of this review the student saved in the error bank.
+    errors: list[ErrorOut] = []
     #: What this call cost, not the review's running total.
     cost_usd: float
     #: Where this call's time went, in seconds: waiting for the model, and
@@ -152,8 +155,9 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.origins,
-        allow_methods=["GET", "POST"],
-        allow_headers=["Authorization"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        # Content-Type: the error bank takes JSON, so "not sent" and "cleared" differ.
+        allow_headers=["Authorization", "Content-Type"],
     )
 
     def require_token(authorization: Annotated[str | None, Header()] = None) -> None:
@@ -260,6 +264,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
                 else None
             ),
             solution=Solution.model_validate_json(row.solution_json) if row.solution_json else None,
+            errors=entries_of(db, row.id),
             cost_usd=round(cost, 4),
             model_seconds=round(model_ms / 1000, 2),
             verify_seconds=round(verify_seconds, 2),
@@ -373,6 +378,8 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         # Written for the old reading; none of it applies any more.
         row.hint_json = row.explanation_json = row.solution_json = None
         db.add(row)
+        # A saved "mistake" that was only a misreading leaves the error bank.
+        follow_correction(db, row.id, updated, verification)
         db.commit()
         return respond(db, row, cost, usage.latency_ms, verifying)
 
@@ -564,6 +571,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
+    add_error_routes(app, Db, auth)
     return app
 
 

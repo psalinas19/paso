@@ -88,6 +88,8 @@ class HintDraft:
     error_type: str | None
     hint: str
     usage: Usage
+    #: Which of the subject's topics the mistake belongs to, for the error bank.
+    topic: str | None = None
 
 
 @dataclass(frozen=True)
