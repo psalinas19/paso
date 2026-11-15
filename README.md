@@ -291,6 +291,21 @@ En la biblioteca, **Buscar** encuentra una revisión por lo que dice: lo que se 
 
 Al final del panel de una revisión, **Exportar a LaTeX** genera un archivo `.tex` con tu desarrollo, lo que dijo el verificador de cada paso y, si las pediste, la explicación y la solución. Funciona sin conexión. El documento dice qué se comprobó con matemáticas y qué es texto del modelo.
 
+### Tus cuadernos en el servidor
+
+Cuando la libreta tiene configurado el backend, cada cuaderno se sube solo al servidor, en segundo plano. No cuesta nada.
+
+- En la biblioteca, la línea bajo el título dice si todos tienen copia o cuántos tienen cambios sin subir. **Respaldar ahora** los sube en el momento.
+- **Si el iPad se pierde o Safari borra sus datos:** en la biblioteca, abajo, **Recuperar del servidor → Buscar en el servidor**.
+- Borrar un cuaderno en el iPad no borra la copia del servidor.
+
+### Archivar un semestre
+
+En la biblioteca, junto al semestre: **Archivar**. Sus cuadernos se suben al servidor, se comprueba que llegaron completos y solo entonces salen del iPad para liberar espacio.
+
+- Siguen en la biblioteca, bajo **Semestres archivados**. Al tocar uno se descarga y se abre **solo para leer** (necesita conexión la primera vez).
+- **Liberar espacio** vuelve a quitar del iPad los que descargaste. **Desarchivar** los trae todos y deja escribir de nuevo.
+
 ### Sin conexión
 
 Si tocas **Revisar** sin internet (o con el backend apagado), la selección se guarda en una cola y no se pierde. Cuando vuelva la conexión la app te avisa; para enviarlas, **⋯ → Revisiones en espera**. No se envían solas porque cada una cuesta.
@@ -323,18 +338,32 @@ El segundo comando imprime qué se leyó y qué dijo el verificador de cada paso
 - Las revisiones se guardan en `backend\data\` (base de datos e imágenes) y también en el iPad: **⋯ → Revisiones guardadas** funciona sin conexión.
 - Quien tenga la dirección del túnel **y** el token puede gastar tu clave. No compartas el token; si se filtra, cámbialo en `.env` y reinicia.
 
+## Poner el backend en un servidor
+
+Para no depender de la laptop ni del túnel: [docs/despliegue.md](docs/despliegue.md). Hay dos opciones preparadas (Fly.io, unos 4 USD al mes, y un servidor propio con Docker, 6 USD al mes); el [plan de la Fase 5](docs/plan-fase5.md) las compara.
+
+El servidor hace un respaldo diario de todo (base de datos, imágenes y cuadernos), lo copia fuera y se puede borrar y restaurar: está probado con `deploy/prueba-restauracion.sh`.
+
+```powershell
+# Respaldo a mano, también en la laptop (queda en backend\backups\)
+py -3.12 -m uv run python -m app.backup create
+
+# Ver cuáles hay
+py -3.12 -m uv run python -m app.backup list
+
+# Dejar los datos como estaban en un respaldo (lo actual se aparta, no se borra)
+py -3.12 -m uv run python -m app.backup restore backups\paso-AAAAMMDD-HHMMSS.tar.gz --force
+```
+
 ## Qué falta
 
-De la Fase 2:
+Todo lo del [SPEC](docs/SPEC.md) §10 está construido. Lo que falta no es código, es comprobarlo en el mundo real:
 
-- **Probar con el modelo real.** Corregir un paso, la pista, la explicación, la solución y el comando `app.case` están construidos y probados con un modelo simulado. La conexión y la lectura ya funcionan en el iPad; el resto no se ha ejecutado contra el API de Anthropic.
-- **Medir.** Llenar el banco de pruebas y sacar la línea base con `app.eval`. Sin eso no se sabe qué tan bien lee el modelo ni si la pista es buena, y no se puede ajustar ningún prompt (SPEC §12.4).
-- **Entrega 2c:** la posición de cada paso y las marcas sobre la hoja.
+1. **Desplegar el backend.** Elegir hosting y seguir [docs/despliegue.md](docs/despliegue.md). Mientras tanto todo funciona como hasta ahora, con la laptop y el túnel.
+2. **Probar en el iPad.** Casi todo lo de las fases 2 a 5 solo se ha probado en un navegador de escritorio: gestos, marcas sobre la hoja, la tarjeta de la gráfica con los dedos, el repaso, archivar un semestre.
+3. **Probar con el modelo real.** La corrección de un paso, la pista, la explicación, la solución, el chat y los ejercicios de repaso se construyeron con un modelo simulado. La lectura de la hoja sí se ha usado con el modelo real.
+4. **Medir.** El banco de pruebas (`backend/eval/cases/`) está vacío: no se sabe qué tan bien lee el modelo ni se puede ajustar un prompt (SPEC §12.4). Hacen falta unas 10 revisiones tuyas convertidas con `app.case` (ver «Llenar el banco de pruebas con tus revisiones») y una corrida de `app.eval`.
+5. **Segunda etapa de las marcas** ([plan](docs/plan-fase2c-marcas.md)): que el modelo diga dónde está cada paso. Espera a que exista la medición del punto 4.
+6. **La app nativa** ([guía](docs/app-nativa.md)): compila en GitHub, pero nunca se ha instalado en un iPad; necesita una Mac.
 
-Hay además un plan pendiente de tu aprobación sobre gestos de la libreta y la ruta a app nativa: [docs/plan-mecanicas-y-app-nativa.md](docs/plan-mecanicas-y-app-nativa.md).
-
-**Fase 3 construida** (explicación, solución, chat y cola sin conexión), pendiente de probar con el modelo real.
-
-**Fase 4 en curso** ([plan](docs/plan-fase4.md)): las cinco entregas están construidas (banco de errores, modo repaso, búsqueda, exportar a LaTeX y graficar), probadas en un navegador de escritorio con el modelo simulado. Falta lo de siempre: probarlas en el iPad y con el modelo real.
-
-Después, la Fase 5 (backend en un servidor para no depender de la laptop, respaldo automático, archivar semestres), según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.
+Qué se decidió y por qué está en [docs/decisions/](docs/decisions/), un archivo corto por decisión.

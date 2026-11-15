@@ -35,3 +35,7 @@ dist/
 
 # Reviews database and uploaded images: runtime data, backed up separately (phase 5).
 backend/data/
+
+# Server backups made on a laptop, and the secrets of a server install.
+backend/backups/
+deploy/.env
