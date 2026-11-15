@@ -30,6 +30,7 @@ from sqlmodel import Session, func, select
 
 from app.api.common import UsageSummary
 from app.api.errors import ErrorOut, add_error_routes, entries_of, follow_correction
+from app.api.notebooks import add_notebook_routes
 from app.api.practice import (
     EXAM_LOCKED,
     Core,
@@ -41,6 +42,9 @@ from app.api.practice import (
     settle,
 )
 from app.api.search import add_search_routes
+from app.backup import due as backup_due
+from app.backup import read_status as backup_status
+from app.backup import run_once as backup_once
 from app.cli_common import MissingApiKeyError, build_provider
 from app.config import Settings, get_settings
 from app.db import (
@@ -100,6 +104,17 @@ def sse(event: str, data: dict) -> str:
     """One server-sent event. The payload is JSON so a newline in the text
     cannot be mistaken for the end of the event."""
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+class BackupState(BaseModel):
+    #: The daily backup runs inside this server.
+    enabled: bool
+    #: Archives are also copied somewhere that is not this server.
+    offsite: bool
+    #: How the last run went; null when none has run yet.
+    ok: bool | None = None
+    at: str | None = None
+    detail: str = ""
 
 
 class PlotResponse(BaseModel):
@@ -178,14 +193,28 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
                 verify(load_subject_cached("general"), [step], worker=worker)
 
         threading.Thread(target=warm, daemon=True).start()
+
+        stop = threading.Event()
+
+        def keep_backups() -> None:
+            # Looked at every few minutes rather than slept on for a day: a server
+            # that was off at the usual hour catches up as soon as it is back.
+            while not stop.is_set():
+                if backup_due(settings):
+                    backup_once(settings)
+                stop.wait(600)
+
+        if settings.backup_enabled:
+            threading.Thread(target=keep_backups, daemon=True).start()
         yield
+        stop.set()
         worker.close()
 
     app = FastAPI(title="Paso", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.origins,
-        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         # Content-Type: the error bank takes JSON, so "not sent" and "cleared" differ.
         allow_headers=["Authorization", "Content-Type"],
     )
@@ -217,6 +246,18 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
     @app.get("/api/health", dependencies=auth)
     def health() -> dict[str, bool]:
         return {"ok": True}
+
+    @app.get("/api/backup/status", dependencies=auth)
+    def backup_state() -> BackupState:
+        """Whether the server is being backed up, and how the last run went."""
+        last = backup_status(settings)
+        return BackupState(
+            enabled=settings.backup_enabled,
+            offsite=bool(settings.backup_remote),
+            ok=last.get("ok"),
+            at=last.get("at"),
+            detail=last.get("detail", ""),
+        )
 
     @app.get("/api/usage", dependencies=auth)
     def usage(db: Db) -> UsageSummary:
@@ -674,6 +715,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
 
     add_error_routes(app, Db, auth)
     add_search_routes(app, Db, auth)
+    add_notebook_routes(app, Db, auth, settings.data_dir / "notebooks")
     add_practice_routes(
         app,
         Db,

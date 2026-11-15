@@ -127,6 +127,25 @@ class Exercise(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
 
 
+class NotebookBackup(SQLModel, table=True):
+    """The server's copy of one notebook (SPEC 5): the iPad is not a permanent store.
+
+    The notebook itself is a `.paso.json` file on disk, exactly as the app
+    exports it, so it can be read without this program. This row is its index
+    card: what the library needs to list it without opening the file.
+    """
+
+    #: The notebook's id on the iPad.
+    id: str = Field(primary_key=True)
+    title: str
+    subject_name: str = ""
+    semester_name: str = ""
+    pages: int = 0
+    strokes: int = 0
+    size_bytes: int = 0
+    updated_at: datetime = Field(default_factory=_now, index=True)
+
+
 class UsageLog(SQLModel, table=True):
     """One paid call. The monthly budget is enforced from this table."""
 

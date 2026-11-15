@@ -59,6 +59,26 @@ class Settings(BaseSettings):
     #: Empty = SQLite file inside data_dir.
     database_url: str = ""
 
+    # --- backups (phase 5) ---
+    #: Run the daily backup from inside the API process. Off on a laptop, on in
+    #: the server: there it is the only thing standing between a dead disk and
+    #: every review ever made.
+    backup_enabled: bool = False
+    #: Where the archives are written. Empty = "backups" beside data_dir.
+    backup_dir: Path | None = None
+    #: An rclone destination (for example "r2:paso-respaldos") that is NOT on
+    #: this server. Empty = the archives stay on this disk only, which protects
+    #: against a bad day but not against losing the server.
+    backup_remote: str = ""
+    #: Keep every archive this many days, then one per week, then one per month.
+    backup_keep_days: int = Field(default=14, ge=1)
+    backup_keep_weeks: int = Field(default=8, ge=0)
+    backup_keep_months: int = Field(default=12, ge=0)
+
+    @property
+    def resolved_backup_dir(self) -> Path:
+        return self.backup_dir or self.data_dir.parent / "backups"
+
     @property
     def resolved_database_url(self) -> str:
         return self.database_url or f"sqlite:///{(self.data_dir / 'paso.db').as_posix()}"

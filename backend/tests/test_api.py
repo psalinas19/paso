@@ -1285,3 +1285,136 @@ def test_plotting_respects_token_budget_and_bad_uploads(client, settings, provid
         db.add(UsageLog(endpoint="check", model="m", cost_usd=5.0))
         db.commit()
     assert post_plot(client).status_code == 402 and provider.calls == 0
+
+
+# --- notebook backups (phase 5) -----------------------------------------------
+
+NOTEBOOK = "0b8f6c1e-2a47-4c5d-9e3f-1a2b3c4d5e6f"
+
+
+def exported(notebook_id=NOTEBOOK, strokes=2, title="Tarea 3"):
+    stroke = {"format_version": 1, "id": "s", "tool": "pen", "points": [[1, 2, 0.5]]}
+    return {
+        "format": "paso-notebook",
+        "format_version": 1,
+        "exported_at": "2026-11-15T10:00:00Z",
+        "subject": {"name": "Ecuaciones Diferenciales", "slug": "ed", "template": "ed", "tags": []},
+        "notebook": {"id": notebook_id, "subject_id": "sub", "title": title, "position": 0},
+        "pages": [{"page": {"id": "p1", "background": "grid"}, "strokes": [stroke] * strokes}],
+    }
+
+
+def put_notebook(client, body=None, notebook_id=NOTEBOOK, **params):
+    return client.put(
+        f"/api/notebooks/{notebook_id}", headers=AUTH, json=body or exported(), params=params
+    )
+
+
+def test_a_notebook_is_kept_as_the_file_the_app_exports(client, settings):
+    response = put_notebook(client, semester="2026-2")
+    assert response.status_code == 200, response.text
+    card = response.json()
+
+    assert (card["title"], card["subject_name"], card["semester_name"]) == (
+        "Tarea 3",
+        "Ecuaciones Diferenciales",
+        "2026-2",
+    )
+    assert (card["pages"], card["strokes"]) == (1, 2) and card["size_bytes"] > 0
+    listed = client.get("/api/notebooks", headers=AUTH).json()["notebooks"]
+    assert listed == [card]
+    # What comes back is what went in, and the file on disk is a plain export.
+    assert client.get(f"/api/notebooks/{NOTEBOOK}", headers=AUTH).json() == exported()
+    on_disk = settings.data_dir / "notebooks" / f"{NOTEBOOK}.paso.json"
+    assert '"format":"paso-notebook"' in on_disk.read_text(encoding="utf-8")
+
+
+def test_a_new_upload_replaces_the_copy_and_keeps_the_one_before(client, settings):
+    put_notebook(client, exported(strokes=5))
+    put_notebook(client, exported(strokes=1, title="Tarea 3 (corregida)"))
+
+    card = client.get("/api/notebooks", headers=AUTH).json()["notebooks"][0]
+    assert (card["title"], card["strokes"]) == ("Tarea 3 (corregida)", 1)
+    folder = settings.data_dir / "notebooks"
+    # One step back survives on disk, in case the upload was a mistake.
+    assert len((folder / f"{NOTEBOOK}.paso.prev").read_text(encoding="utf-8")) > len(
+        (folder / f"{NOTEBOOK}.paso.json").read_text(encoding="utf-8")
+    )
+    assert not list(folder.glob("*.tmp"))
+
+
+def test_bad_uploads_are_refused_and_never_reach_the_disk(client, settings):
+    assert put_notebook(client, {"format": "something-else", "pages": []}).status_code == 422
+    assert put_notebook(client, exported(notebook_id="another")).status_code == 422
+    broken = exported()
+    broken["pages"] = [{"page": {}}]
+    assert put_notebook(client, broken).status_code == 422
+    # An id that is not one of ours never becomes a path.
+    for odd in ("..%2F..%2Fetc", "x", "0b8f6c1e-2a47-4c5d-9e3f-1a2b3c4d5e6f.json"):
+        assert client.get(f"/api/notebooks/{odd}", headers=AUTH).status_code == 404
+        assert client.put(
+            f"/api/notebooks/{odd}", headers=AUTH, json=exported(odd)
+        ).status_code in (
+            404,
+            422,
+        )
+    assert list((settings.data_dir / "notebooks").iterdir()) == []
+    for call in (
+        lambda: client.get("/api/notebooks"),
+        lambda: client.get(f"/api/notebooks/{NOTEBOOK}"),
+        lambda: client.put(f"/api/notebooks/{NOTEBOOK}", json=exported()),
+        lambda: client.delete(f"/api/notebooks/{NOTEBOOK}"),
+    ):
+        assert call().status_code == 401
+
+
+def test_the_server_copy_is_only_dropped_when_asked(client, settings):
+    put_notebook(client)
+    put_notebook(client)
+    assert client.get(f"/api/notebooks/{NOTEBOOK}", headers=AUTH).status_code == 200
+
+    assert client.delete(f"/api/notebooks/{NOTEBOOK}", headers=AUTH).json() == {"ok": True}
+
+    assert client.get(f"/api/notebooks/{NOTEBOOK}", headers=AUTH).status_code == 404
+    assert client.get("/api/notebooks", headers=AUTH).json() == {"notebooks": []}
+    assert list((settings.data_dir / "notebooks").iterdir()) == []
+    assert client.delete(f"/api/notebooks/{NOTEBOOK}", headers=AUTH).status_code == 404
+
+
+def test_the_browser_may_upload_with_put(client):
+    allowed = client.options(
+        f"/api/notebooks/{NOTEBOOK}",
+        headers={
+            "Origin": "https://paso-libreta.paso-frontend.workers.dev",
+            "Access-Control-Request-Method": "PUT",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+    assert allowed.status_code == 200 and "PUT" in allowed.headers["access-control-allow-methods"]
+
+
+def test_a_server_with_backups_on_makes_one_at_startup_and_reports_it(settings, provider):
+    import time
+
+    on = settings.model_copy(update={"backup_enabled": True})
+    with TestClient(create_app(on, provider)) as live:
+        post_check(live)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            state = live.get("/api/backup/status", headers=AUTH).json()
+            if state["at"]:
+                break
+            time.sleep(0.1)
+
+    assert state["enabled"] is True and state["ok"] is True
+    # No external storage configured: it works, and it does not pretend otherwise.
+    assert state["offsite"] is False and "solo en este servidor" in state["detail"]
+    assert len(list(on.resolved_backup_dir.glob("paso-*.tar.gz"))) == 1
+
+
+def test_a_laptop_makes_no_backups_and_says_so(client, settings):
+    state = client.get("/api/backup/status", headers=AUTH).json()
+
+    assert state == {"enabled": False, "offsite": False, "ok": None, "at": None, "detail": ""}
+    assert not settings.resolved_backup_dir.exists()
+    assert client.get("/api/backup/status").status_code == 401
