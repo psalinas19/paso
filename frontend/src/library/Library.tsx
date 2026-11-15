@@ -15,6 +15,8 @@ interface Props {
   onOpen(notebookId: string): void;
   /** Open the error bank. */
   onErrors(): void;
+  /** Open the search over reviews. */
+  onSearch(): void;
   onError(message: string): void;
 }
 
@@ -50,7 +52,7 @@ function AddForm({ label, placeholder, onAdd, children }: {
   );
 }
 
-export function Library({ onOpen, onErrors, onError }: Props) {
+export function Library({ onOpen, onErrors, onSearch, onError }: Props) {
   // Live queries: the screen follows the database, no manual refresh after each action.
   const data = useLiveQuery(async () => ({
     semesters: (await db.semesters.toArray()).sort((a, b) => b.name.localeCompare(a.name)),
@@ -92,6 +94,7 @@ export function Library({ onOpen, onErrors, onError }: Props) {
     <main className="library">
       <header className="top">
         <h1>Paso</h1>
+        <button type="button" className="quiet" onClick={onSearch}>Buscar</button>
         <button type="button" onClick={onErrors}>{data.pending ? `Mis errores (${data.pending})` : "Mis errores"}</button>
       </header>
       {data.semesters.map((semester) => (

@@ -1422,3 +1422,54 @@ html:has(.library) body {
 .review .practice .proved {
   color: #1f2a44;
 }
+
+/* --- search ----------------------------------------------------------------- */
+
+.search > header {
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.search > header h1 {
+  margin: 0;
+}
+
+.search .hits {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search .hit {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+}
+
+.search .hit .when {
+  margin: 0 0 6px;
+  color: #475467;
+  font-size: 14px;
+}
+
+.search .hit .passage {
+  margin: 0 0 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.search mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: #ffe58a;
+  color: inherit;
+}
+
+.search .review-inline {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #edf0f5;
+}

@@ -4,6 +4,7 @@ import { CanvasView } from "./canvas/CanvasView";
 import { db, ensureFirstPage } from "./db";
 import { ErrorsView } from "./errors/ErrorsView";
 import { Library } from "./library/Library";
+import { SearchView } from "./search/SearchView";
 import { isNative } from "./native/pencil";
 
 const LAST_NOTEBOOK = "paso:last-notebook";
@@ -12,11 +13,14 @@ export function App() {
   // null = the library screen; undefined = still starting up.
   const [notebookId, setNotebookId] = useState<string | null | undefined>(undefined);
   // Which screen is up when no notebook is open.
-  const [screen, setScreen] = useState<"library" | "errors">("library");
+  const [screen, setScreen] = useState<"library" | "errors" | "search">("library");
   // The page to open the notebook on, when it is opened to practise an exercise.
   const [startPage, setStartPage] = useState<string | undefined>(undefined);
-  const openAt = (id: string, pageId?: string) => {
+  // The saved review to show on arrival, when the notebook is opened from a search hit.
+  const [openReview, setOpenReview] = useState<string | undefined>(undefined);
+  const openAt = (id: string, pageId?: string, reviewId?: string) => {
     setStartPage(pageId);
+    setOpenReview(reviewId);
     setNotebookId(id);
   };
   const [error, setError] = useState("");
@@ -53,6 +57,7 @@ export function App() {
           key={notebookId}
           notebookId={notebookId}
           startPageId={startPage}
+          openReviewId={openReview}
           onError={setError}
           onLibrary={() => {
             // "Biblioteca" always means the library, also when the notebook was opened from the error bank.
@@ -61,7 +66,8 @@ export function App() {
           }}
         />
       )}
-      {notebookId === null && screen === "library" && <Library onOpen={openAt} onErrors={() => setScreen("errors")} onError={setError} />}
+      {notebookId === null && screen === "library" && <Library onOpen={openAt} onErrors={() => setScreen("errors")} onSearch={() => setScreen("search")} onError={setError} />}
+      {notebookId === null && screen === "search" && <SearchView onBack={() => setScreen("library")} onOpen={openAt} />}
       {notebookId === null && screen === "errors" && <ErrorsView onBack={() => setScreen("library")} onOpen={openAt} />}
       {error && (
         <div className="banner banner-error" role="alert" onClick={() => setError("")}>

@@ -19,10 +19,12 @@ import { loadPrefs, savePrefs } from "./prefs";
 import { PEN_COLORS, PEN_SIZES, Toolbar, type ToolKind } from "./Toolbar";
 
 /** A notebook: the toolbar (React) on top of the drawing surface (NotebookCanvas). */
-export function CanvasView({ notebookId, startPageId, onError, onLibrary }: {
+export function CanvasView({ notebookId, startPageId, openReviewId, onError, onLibrary }: {
   notebookId: string;
-  /** Open on this page (a practice exercise) instead of the first one. */
+  /** Open on this page (a practice exercise, a search hit) instead of the first one. */
   startPageId?: string;
+  /** Open with this saved review in the panel (a search hit). */
+  openReviewId?: string;
   onError: (message: string) => void;
   onLibrary: () => void;
 }) {
@@ -60,6 +62,17 @@ export function CanvasView({ notebookId, startPageId, onError, onLibrary }: {
   const pageIds = useLiveQuery(() => loadPages(notebookId).then((pages) => pages.map((p) => p.id)), [notebookId, revision, where.total]);
   const practising = rounds?.length ? exerciseOnPage(rounds, pageIds?.[where.current - 1]) : undefined;
   const [backOnline, setBackOnline] = useState(false);
+  useEffect(() => {
+    // Arriving from a search hit: show the review that matched.
+    if (!openReviewId) return;
+    let alive = true;
+    void db.reviews.get(openReviewId).then((found) => {
+      if (alive && found) setPanel({ kind: "result", review: found });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [openReviewId]);
   useEffect(() => {
     // The connection is back: say so, but send nothing. Each review costs money (SPEC 6.9).
     const online = () => setBackOnline(true);

@@ -270,6 +270,17 @@ En **Mis errores**, cada materia con errores pendientes tiene un botón **Repasa
 - **Modo examen** (casilla al empezar): no hay pista, explicación, solución ni chat hasta que entregues un desarrollo de ese ejercicio.
 - En **Mis errores** verás el último repaso de cada materia y un botón para retomarlo donde lo dejaste.
 
+### Buscar
+
+En la biblioteca, **Buscar** encuentra una revisión por lo que dice: lo que se leyó de tu desarrollo, la pista, la explicación, la solución o el chat. Escribe una o varias palabras (deben aparecer todas; los acentos dan igual) y toca el resultado para abrir el cuaderno en esa página con la revisión abierta.
+
+- Solo busca en lo que ya revisaste: la tinta sin revisar no tiene texto.
+- Necesita conexión, y no cuesta.
+
+### Exportar una revisión a LaTeX
+
+Al final del panel de una revisión, **Exportar a LaTeX** genera un archivo `.tex` con tu desarrollo, lo que dijo el verificador de cada paso y, si las pediste, la explicación y la solución. Funciona sin conexión. El documento dice qué se comprobó con matemáticas y qué es texto del modelo.
+
 ### Sin conexión
 
 Si tocas **Revisar** sin internet (o con el backend apagado), la selección se guarda en una cola y no se pierde. Cuando vuelva la conexión la app te avisa; para enviarlas, **⋯ → Revisiones en espera**. No se envían solas porque cada una cuesta.
@@ -314,6 +325,6 @@ Hay además un plan pendiente de tu aprobación sobre gestos de la libreta y la 
 
 **Fase 3 construida** (explicación, solución, chat y cola sin conexión), pendiente de probar con el modelo real.
 
-**Fase 4 en curso** ([plan](docs/plan-fase4.md)): el banco de errores y el modo repaso están construidos, sin probar con el modelo real ni en el iPad. Faltan la búsqueda en todas las notas, exportar una revisión a LaTeX y graficar.
+**Fase 4 en curso** ([plan](docs/plan-fase4.md)): el banco de errores, el modo repaso, la búsqueda y la exportación a LaTeX están construidos, sin probar con el modelo real ni en el iPad. Falta graficar.
 
 Después, la Fase 5 (backend en un servidor para no depender de la laptop, respaldo automático, archivar semestres), según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.

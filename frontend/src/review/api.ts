@@ -332,6 +332,25 @@ export function postPractice(config: BackendConfig, request: { subject_name: str
   return call<PracticeResponse>(config, "/api/review/generate", json("POST", { ...request, effort }));
 }
 
+// --- search (SPEC 7). Free: it never reaches the model. ---
+
+/** A review that matched a search, with the passage where it matched. */
+export interface SearchHit {
+  check_id: string;
+  subject: string;
+  created_at: string;
+  /** Where it was found. */
+  kinds: ("steps" | "hint" | "explanation" | "solution" | "chat")[];
+  /** The passage, in runs; `hit` marks the words that matched. */
+  snippet: { text: string; hit: boolean }[];
+}
+
+export const searchReviews = (config: BackendConfig, query: string) =>
+  call<{ hits: SearchHit[] }>(config, `/api/search?q=${encodeURIComponent(query)}`).then((r) => r.hits);
+
+/** A review as the backend holds it, for one that is not kept on this device. */
+export const getCheck = (config: BackendConfig, checkId: string) => call<CheckResponse>(config, `/api/checks/${encodeURIComponent(checkId)}`);
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

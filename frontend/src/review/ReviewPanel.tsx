@@ -3,6 +3,8 @@ import "katex/dist/katex.min.css";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { db, type QueuedReview, type Review } from "../db";
+import { latexFilename, reviewToLatex } from "../export/latex";
+import { shareFile } from "../export/notebook";
 import { Markdown } from "./markdown";
 import { useTaxonomy } from "../errors/useTaxonomy";
 import { describeAttempt } from "../practice/rounds";
@@ -466,11 +468,22 @@ export function Result({ review, actions, bank }: { review: Review; actions?: Re
         })}
       </ol>
       {review.recognition.warnings.length > 0 && <p className="muted">{review.recognition.warnings.join(" ")}</p>}
-      <p className="muted cost">
-        Esta revisión: {review.cost_usd.toFixed(3)} USD · Mes: {review.month_spend_usd.toFixed(2)} de{" "}
-        {review.budget_usd.toFixed(2)} USD
-      </p>
+      {/* A review read back from the backend carries no running cost: say nothing rather than "0". */}
+      {(actions || review.cost_usd > 0) && (
+        <p className="muted cost">
+          Esta revisión: {review.cost_usd.toFixed(3)} USD · Mes: {review.month_spend_usd.toFixed(2)} de{" "}
+          {review.budget_usd.toFixed(2)} USD
+        </p>
+      )}
       {review.timing && <p className="muted cost">{describeTiming(review.timing)}</p>}
+      {/* Built from the copy kept here: works offline, and for a review opened read-only. */}
+      <button
+        type="button"
+        className="link"
+        onClick={() => void shareFile(new Blob([reviewToLatex(review)], { type: "text/plain" }), latexFilename(review))}
+      >
+        Exportar a LaTeX
+      </button>
       {actions && !locked ? (
         <Chat key={`chat-${review.id}`} review={review} onChat={actions.onChat} />
       ) : (
