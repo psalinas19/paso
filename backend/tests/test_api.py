@@ -1237,3 +1237,51 @@ def test_a_review_can_be_read_back_by_a_device_without_a_copy(client, provider):
     assert body["cost_usd"] == 0 and provider.calls == calls
     assert client.get("/api/checks/nope", headers=AUTH).status_code == 404
     assert client.get(f"/api/checks/{first['id']}").status_code == 401
+
+
+# --- graphing (4e) ------------------------------------------------------------
+
+
+def post_plot(client, **overrides):
+    request = {
+        "headers": AUTH,
+        "data": {"subject": "general"},
+        "files": {"image": ("selection.png", png(), "image/png")},
+    }
+    request.update(overrides)
+    return client.post("/api/plot", **request)
+
+
+def test_a_selected_equation_comes_back_as_something_to_draw(client, settings, provider):
+    provider.page = page([("s1", "Eq(y, x**2 - 4)", R.GIVEN, ())])
+
+    response = post_plot(client)
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    assert body["plottable"] is True and (body["label"], body["variable"]) == ("y", "x")
+    assert body["tree"]["op"] == "+"
+    # Reading costs like a review and is charged; nothing else is kept on the server.
+    assert body["cost_usd"] == 0.05 and body["usage"]["checks_this_month"] == 0
+    assert list((settings.data_dir / "images").iterdir()) == []
+    with Session(make_engine(settings.resolved_database_url)) as db:
+        assert [u.endpoint for u in db.exec(select(UsageLog)).all()] == ["plot"]
+
+
+def test_an_equation_that_cannot_be_drawn_says_why_and_still_reports_its_cost(client, provider):
+    # The default page solves 2x + 4 = 10 down to "x = 4": equations and a value, no y = f(x).
+    body = post_plot(client).json()
+
+    assert body["plottable"] is False and "no está despejada" in body["reason"]
+    assert body["tree"] is None and body["cost_usd"] == 0.05
+
+
+def test_plotting_respects_token_budget_and_bad_uploads(client, settings, provider):
+    assert client.post("/api/plot", data={"subject": "general"}).status_code == 401
+    assert post_plot(client, data={"subject": "nope"}).status_code == 404
+    bad = post_plot(client, files={"image": ("x.png", b"not an image", "image/png")})
+    assert bad.status_code == 400 and provider.calls == 0
+    with Session(make_engine(settings.resolved_database_url)) as db:
+        db.add(UsageLog(endpoint="check", model="m", cost_usd=5.0))
+        db.commit()
+    assert post_plot(client).status_code == 402 and provider.calls == 0

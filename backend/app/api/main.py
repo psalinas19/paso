@@ -102,6 +102,23 @@ def sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+class PlotResponse(BaseModel):
+    """What "Graficar" gives back (SPEC 6.10). The notebook draws `tree` itself."""
+
+    plottable: bool
+    #: Why not, in Spanish, when it cannot be drawn.
+    reason: str = ""
+    #: The equation as it was read, for the card's title.
+    latex: str = ""
+    #: LaTeX of what the curve gives (the "y"), and the name of its variable.
+    label: str = ""
+    variable: str = ""
+    #: Nested {"n"|"v"|"op"|"f"} nodes; see app/plotting.py.
+    tree: dict | None = None
+    cost_usd: float
+    usage: UsageSummary
+
+
 class CheckResponse(BaseModel):
     """A review as it stands now. Every endpoint that changes one returns this."""
 
@@ -353,6 +370,44 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         db.commit()
         reading = recognition.usage.latency_ms if recognition.usage and cost else 0
         return respond(db, row, cost, reading, verifying, progress)
+
+    @app.post("/api/plot", dependencies=auth)
+    def plot(
+        db: Db,
+        image: UploadFile,
+        subject: Annotated[str, Form()],
+        effort: Annotated[str | None, Form()] = None,
+    ) -> PlotResponse:
+        """Read the selected equation and say how to draw it. Reading costs like a review."""
+        try:
+            subject_config = load_subject_cached(subject)
+        except SubjectNotFoundError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        refuse_over_budget(db)
+        data = image.file.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, "La imagen es demasiado grande. Selecciona una región menor.")
+        llm = model(effort)
+        # Read and thrown away: the graph is kept by the notebook, with the page.
+        path = images_dir / f"plot-{uuid.uuid4().hex}.png"
+        path.write_bytes(data)
+        try:
+            recognition = recognize(path, subject_config, llm, settings)
+        except (UnidentifiedImageError, OSError) as exc:
+            raise HTTPException(400, "El archivo enviado no es una imagen válida.") from exc
+        except ProviderError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        finally:
+            path.unlink(missing_ok=True)
+
+        with worker_lock:
+            found = worker.plot(
+                subject_config.model_dump(mode="json"),
+                [step.model_dump(mode="json") for step in recognition.steps],
+            )
+        cost = charge(db, "plot", recognition.usage)
+        db.commit()
+        return PlotResponse(**found, cost_usd=round(cost, 4), usage=summary(db))
 
     @app.get("/api/checks/{check_id}", dependencies=auth)
     def read_check(db: Db, check_id: str) -> CheckResponse:

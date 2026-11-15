@@ -18,6 +18,9 @@ from typing import Any
 
 from app.schemas import StepVerification, VerificationStatus
 
+#: First element of a message that asks for a plot instead of a verification.
+PLOT_JOB = "plot"
+
 
 def _worker_main(conn: Connection) -> None:  # pragma: no cover - runs in a subprocess
     """Receive (subject, steps, step_id) triples; send back a verification."""
@@ -31,8 +34,14 @@ def _worker_main(conn: Connection) -> None:  # pragma: no cover - runs in a subp
             return
         if message is None:
             return
-        subject_data, steps_data, step_id = message
         try:
+            if message[0] == PLOT_JOB:
+                # Same parser, same risk of a runaway expression: same timeout.
+                from app.plotting import plot_in_process
+
+                conn.send(("ok", plot_in_process(message[1], message[2])))
+                continue
+            subject_data, steps_data, step_id = message
             result = verify_one_in_process(subject_data, steps_data, step_id)
             conn.send(("ok", result.model_dump(mode="json")))
         except Exception as exc:  # noqa: BLE001 - never let the worker die silently
@@ -82,6 +91,31 @@ class TimeoutWorker:
         self.close()
 
     # --- use --------------------------------------------------------------
+
+    def plot(
+        self, subject_data: dict[str, Any], steps_data: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """What `app.plotting.plot_of` says, or "not plottable" if it ran out of time."""
+        if self._process is None or not self._process.is_alive() or self._conn is None:
+            self._restart()
+        assert self._conn is not None
+        try:
+            self._conn.send((PLOT_JOB, subject_data, steps_data))
+        except (BrokenPipeError, OSError):
+            self._restart()
+            assert self._conn is not None
+            self._conn.send((PLOT_JOB, subject_data, steps_data))
+        if not self._conn.poll(self.timeout_seconds):
+            self._restart()
+            return {"plottable": False, "reason": "SymPy tardó demasiado en interpretarla"}
+        try:
+            tag, payload = self._conn.recv()
+        except (EOFError, OSError):
+            self._restart()
+            return {"plottable": False, "reason": "el cálculo se interrumpió"}
+        if tag != "ok":
+            return {"plottable": False, "reason": "no se pudo interpretar la expresión"}
+        return payload
 
     def verify(
         self, subject_data: dict[str, Any], steps_data: list[dict[str, Any]], step_id: str
