@@ -21,6 +21,8 @@ interface Props {
   canUndo: boolean;
   canRedo: boolean;
   hasSelection: boolean;
+  /** An archived notebook: no writing tools, only the library and the menu. */
+  readOnly?: boolean;
   onTool(kind: ToolKind): void;
   onPen(index: number): void;
   onSize(index: number): void;
@@ -61,83 +63,88 @@ export function Toolbar(p: Props) {
           <path d="M5 4v16M9 4v16M13 5l5 15M4 20h16" />
         </Icon>
       </Button>
-      <span className="sep" />
-      <Button label="Lazo: seleccionar, mover y estirar" pressed={p.active === "lasso"} onClick={() => p.onTool("lasso")}>
-        <Icon>
-          <ellipse cx="12" cy="10" rx="8" ry="5.5" strokeDasharray="3 2.5" />
-          <path d="M7 14.5c-1 1.5-1 3.5 1 5" />
-        </Icon>
-      </Button>
-      <span className="sep" />
-      {PEN_COLORS.map((c, i) => (
-        <Button key={c.value} label={`Pluma ${c.name.toLowerCase()}`} pressed={p.active === "pen" && p.pen === i} onClick={() => p.onPen(i)}>
-          <span className="swatch" style={{ background: c.value }} />
-        </Button>
-      ))}
-      <span className="sep" />
-      {PEN_SIZES.map((s, i) => (
-        <Button key={s.value} label={`Grosor ${s.name.toLowerCase()}`} pressed={p.size === i} onClick={() => p.onSize(i)}>
-          <span className="dot" style={{ width: 4 + i * 4, height: 4 + i * 4 }} />
-        </Button>
-      ))}
-      <span className="sep" />
-      <Button label="Resaltador" pressed={p.active === "highlighter"} onClick={() => p.onTool("highlighter")}>
-        <Icon>
-          <path d="M9 14l-3 3v3h3l3-3" />
-          <path d="M9 14l7-9 4 4-8 8z" fill="#ffd400" />
-        </Icon>
-      </Button>
-      <Button label="Borrador: borra y vuelve a la pluma" pressed={p.active === "eraser"} onClick={() => p.onTool("eraser")}>
-        <Icon>
-          <path d="M8 19l-4-4L14 5l6 6-8 8z" />
-          <path d="M9.5 9.5l6 6M8 19h11" />
-        </Icon>
-      </Button>
-      {p.hasSelection && (
-        <button type="button" className="tool review-button" onClick={p.onReview}>
-          Revisar
-        </button>
+      {/* Everything that writes, erases or selects is left out of an archived notebook. */}
+      {!p.readOnly && (
+        <>
+          <span className="sep" />
+          <Button label="Lazo: seleccionar, mover y estirar" pressed={p.active === "lasso"} onClick={() => p.onTool("lasso")}>
+            <Icon>
+              <ellipse cx="12" cy="10" rx="8" ry="5.5" strokeDasharray="3 2.5" />
+              <path d="M7 14.5c-1 1.5-1 3.5 1 5" />
+            </Icon>
+          </Button>
+          <span className="sep" />
+          {PEN_COLORS.map((c, i) => (
+            <Button key={c.value} label={`Pluma ${c.name.toLowerCase()}`} pressed={p.active === "pen" && p.pen === i} onClick={() => p.onPen(i)}>
+              <span className="swatch" style={{ background: c.value }} />
+            </Button>
+          ))}
+          <span className="sep" />
+          {PEN_SIZES.map((s, i) => (
+            <Button key={s.value} label={`Grosor ${s.name.toLowerCase()}`} pressed={p.size === i} onClick={() => p.onSize(i)}>
+              <span className="dot" style={{ width: 4 + i * 4, height: 4 + i * 4 }} />
+            </Button>
+          ))}
+          <span className="sep" />
+          <Button label="Resaltador" pressed={p.active === "highlighter"} onClick={() => p.onTool("highlighter")}>
+            <Icon>
+              <path d="M9 14l-3 3v3h3l3-3" />
+              <path d="M9 14l7-9 4 4-8 8z" fill="#ffd400" />
+            </Icon>
+          </Button>
+          <Button label="Borrador: borra y vuelve a la pluma" pressed={p.active === "eraser"} onClick={() => p.onTool("eraser")}>
+            <Icon>
+              <path d="M8 19l-4-4L14 5l6 6-8 8z" />
+              <path d="M9.5 9.5l6 6M8 19h11" />
+            </Icon>
+          </Button>
+          {p.hasSelection && (
+            <button type="button" className="tool review-button" onClick={p.onReview}>
+              Revisar
+            </button>
+          )}
+          {p.hasSelection && (
+            <button type="button" className="tool plot-button" onClick={p.onPlot}>
+              Graficar
+            </button>
+          )}
+          {p.hasSelection && (
+            <Button label="Duplicar la selección" onClick={p.onDuplicateSelection}>
+              <Icon>
+                <rect x="8" y="8" width="12" height="12" rx="2" />
+                <path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
+              </Icon>
+            </Button>
+          )}
+          {p.hasSelection && (
+            <Button label="Borrar la selección" onClick={p.onDeleteSelection}>
+              <Icon>
+                <path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6" />
+              </Icon>
+            </Button>
+          )}
+          <span className="sep" />
+          <Button label="Deshacer" disabled={!p.canUndo} onClick={p.onUndo}>
+            <Icon>
+              <path d="M8 6L4 10l4 4" />
+              <path d="M4 10h10a5 5 0 010 10h-3" />
+            </Icon>
+          </Button>
+          <Button label="Rehacer" disabled={!p.canRedo} onClick={p.onRedo}>
+            <Icon>
+              <path d="M16 6l4 4-4 4" />
+              <path d="M20 10H10a5 5 0 000 10h3" />
+            </Icon>
+          </Button>
+          <span className="sep" />
+          <Button label="Cambiar fondo: cuadrícula, rayado o blanco" onClick={p.onBackground}>
+            <Icon>
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+              <path d="M4 10h16M4 15h16M10 4v16M15 4v16" />
+            </Icon>
+          </Button>
+        </>
       )}
-      {p.hasSelection && (
-        <button type="button" className="tool plot-button" onClick={p.onPlot}>
-          Graficar
-        </button>
-      )}
-      {p.hasSelection && (
-        <Button label="Duplicar la selección" onClick={p.onDuplicateSelection}>
-          <Icon>
-            <rect x="8" y="8" width="12" height="12" rx="2" />
-            <path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" />
-          </Icon>
-        </Button>
-      )}
-      {p.hasSelection && (
-        <Button label="Borrar la selección" onClick={p.onDeleteSelection}>
-          <Icon>
-            <path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6" />
-          </Icon>
-        </Button>
-      )}
-      <span className="sep" />
-      <Button label="Deshacer" disabled={!p.canUndo} onClick={p.onUndo}>
-        <Icon>
-          <path d="M8 6L4 10l4 4" />
-          <path d="M4 10h10a5 5 0 010 10h-3" />
-        </Icon>
-      </Button>
-      <Button label="Rehacer" disabled={!p.canRedo} onClick={p.onRedo}>
-        <Icon>
-          <path d="M16 6l4 4-4 4" />
-          <path d="M20 10H10a5 5 0 000 10h3" />
-        </Icon>
-      </Button>
-      <span className="sep" />
-      <Button label="Cambiar fondo: cuadrícula, rayado o blanco" onClick={p.onBackground}>
-        <Icon>
-          <rect x="4" y="4" width="16" height="16" rx="2" />
-          <path d="M4 10h16M4 15h16M10 4v16M15 4v16" />
-        </Icon>
-      </Button>
       {/* Native popover: opens and closes with no state of ours, and closes on a tap outside. */}
       <button type="button" className="tool" aria-label="Más: exportar y páginas" title="Más: exportar y páginas" popoverTarget="notebook-menu">
         <Icon>

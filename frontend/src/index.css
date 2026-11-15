@@ -1597,3 +1597,62 @@ html:has(.library) body {
   display: block;
   text-align: left;
 }
+
+/* --- backups and archived semesters ----------------------------------------- */
+
+.backup-line {
+  margin: -12px auto 24px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 15px;
+}
+
+.backup-line.ok {
+  color: #475467;
+  padding-left: 0;
+}
+
+.backup-line.warn {
+  background: #fffaf2;
+  border: 1px solid #f1d9b5;
+  color: #7a4a06;
+}
+
+.library .backup-line button.quiet {
+  min-height: 36px;
+  color: inherit;
+  text-decoration: underline;
+}
+
+.banner.readonly {
+  top: auto;
+  bottom: calc(44px + env(safe-area-inset-bottom));
+}
+
+.library .archived .subject small {
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.library .lost {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.library .lost li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+}
+
+.library .lost li span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}

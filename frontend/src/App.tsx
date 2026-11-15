@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
 import { CanvasView } from "./canvas/CanvasView";
+import { uploadPending } from "./backup/sync";
 import { db, ensureFirstPage } from "./db";
 import { ErrorsView } from "./errors/ErrorsView";
 import { Library } from "./library/Library";
 import { SearchView } from "./search/SearchView";
 import { isNative } from "./native/pencil";
+import { loadConfig } from "./review/api";
 
 const LAST_NOTEBOOK = "paso:last-notebook";
 
@@ -31,7 +33,11 @@ export function App() {
     ensureFirstPage()
       .then(async (first) => {
         const last = localStorage.getItem(LAST_NOTEBOOK);
-        setNotebookId(last && (await db.notebooks.get(last)) ? last : first.notebook_id);
+        const found = last ? await db.notebooks.get(last) : undefined;
+        // A notebook whose pages are on the server opens from the library, which downloads it first.
+        setNotebookId(found ? (found.evicted ? null : found.id) : (first?.notebook_id ?? null));
+        // Whatever did not reach the server last time goes up now. Free and silent.
+        void uploadPending(loadConfig());
       })
       .catch(() => setError("No se pudo abrir el almacenamiento de este navegador. ¿Estás en navegación privada?"));
     // Ask Safari not to evict the notes when the iPad runs low on space.

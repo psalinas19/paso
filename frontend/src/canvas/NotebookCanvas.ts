@@ -184,6 +184,7 @@ export class NotebookCanvas {
   private placed: PlacedMark[] = [];
   private gestures = true;
   private scribbleErase = false;
+  private readOnly = false;
   private shownPage = "";
   private velocity: XY = [0, 0]; // px per ms, for the glide after a flick
   private lastMove = 0;
@@ -275,6 +276,11 @@ export class NotebookCanvas {
   setReviews(reviews: Review[]) {
     this.reviews = reviews;
     this.invalidate();
+  }
+
+  /** An archived notebook: it scrolls, zooms and shows its marks, and takes no ink. */
+  setReadOnly(on: boolean) {
+    this.readOnly = on;
   }
 
   /** Scribbling over ink with the pen erases it. Off unless the user turns it on. */
@@ -760,6 +766,7 @@ export class NotebookCanvas {
       this.current = { mode: "mark", id, start: this.pos(e), mark };
       return;
     }
+    if (this.readOnly) return; // looked at, not written on
     this.events.onInk();
 
     if (this.tool.kind === "eraser") {

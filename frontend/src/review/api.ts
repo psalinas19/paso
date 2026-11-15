@@ -332,6 +332,44 @@ export function postPractice(config: BackendConfig, request: { subject_name: str
   return call<PracticeResponse>(config, "/api/review/generate", json("POST", { ...request, effort }));
 }
 
+// --- the server's copy of the notebooks, and the server's own backups (phase 5). Free. ---
+
+/** What the server knows of a notebook it keeps. */
+export interface NotebookCard {
+  id: string;
+  title: string;
+  subject_name: string;
+  semester_name: string;
+  pages: number;
+  strokes: number;
+  size_bytes: number;
+  updated_at: string;
+}
+
+/** Upload a notebook as the `.paso.json` the app exports. It replaces the server's copy. */
+export function putNotebook(config: BackendConfig, id: string, semester: string, exported: unknown): Promise<NotebookCard> {
+  return call<NotebookCard>(config, `/api/notebooks/${encodeURIComponent(id)}?semester=${encodeURIComponent(semester)}`, json("PUT", exported));
+}
+
+export const listNotebooks = (config: BackendConfig) => call<{ notebooks: NotebookCard[] }>(config, "/api/notebooks").then((r) => r.notebooks);
+
+export const getNotebook = (config: BackendConfig, id: string) => call<unknown>(config, `/api/notebooks/${encodeURIComponent(id)}`);
+
+export const deleteNotebookCopy = (config: BackendConfig, id: string) =>
+  call<{ ok: boolean }>(config, `/api/notebooks/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+/** Whether the server backs itself up, and how the last run went. */
+export interface BackupState {
+  enabled: boolean;
+  /** Archives are also copied somewhere that is not the server. */
+  offsite: boolean;
+  ok: boolean | null;
+  at: string | null;
+  detail: string;
+}
+
+export const getBackupState = (config: BackendConfig) => call<BackupState>(config, "/api/backup/status");
+
 // --- search (SPEC 7). Free: it never reaches the model. ---
 
 /** A review that matched a search, with the passage where it matched. */

@@ -1,7 +1,10 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState, type FormEvent } from "react";
 import { Thumbnail } from "../canvas/PagesPanel";
-import { db, type Page } from "../db";
+import { archiveSemester, downloadNotebook, freeSemester, recoverable, recoverNotebook, unarchiveSemester } from "../backup/archive";
+import { BackupLine } from "../backup/BackupLine";
+import { db, type Notebook, type Page } from "../db";
+import { loadConfig, type NotebookCard } from "../review/api";
 import { ImportError, importNotebookFile } from "../export/notebook";
 import {
   createNotebook, createSemester, createSubject, deleteNotebook, deleteSemester, deleteSubject,
@@ -62,7 +65,41 @@ export function Library({ onOpen, onErrors, onSearch, onError }: Props) {
     // Mistakes still pending in the error bank, as last fetched.
     pending: await db.errors.filter((e) => !e.resolved).count(),
   }));
+  // What a long job is doing right now ("Archivando: 2 de 5"), and what the server holds that this iPad does not.
+  const [working, setWorking] = useState("");
+  const [lost, setLost] = useState<NotebookCard[] | null>(null);
   if (!data) return null;
+
+  /** Run something that talks to the server, saying what it is doing and why it failed. */
+  const job = async (label: string, run: (progress: (done: number, total: number) => void) => Promise<unknown>) => {
+    setWorking(`${label}…`);
+    try {
+      await run((done, total) => setWorking(`${label}: ${done} de ${total}`));
+    } catch (error) {
+      onError(error instanceof ImportError || error instanceof Error ? error.message : "No se pudo completar.");
+    }
+    setWorking("");
+  };
+  /** A notebook whose pages are on the server is downloaded first; then it opens like any other. */
+  const open = (notebook: Notebook) => {
+    if (!notebook.evicted) return onOpen(notebook.id);
+    void job("Descargando el cuaderno", async () => {
+      await downloadNotebook(loadConfig(), notebook.id);
+      onOpen(notebook.id);
+    });
+  };
+  const archive = (id: string, name: string) => {
+    const sure = window.confirm(
+      `¿Archivar el semestre ${name}?\n\nSus cuadernos se suben al servidor y salen de este iPad para liberar espacio. Siguen en la biblioteca: se abren con conexión, solo para leer. Nada se borra del iPad hasta que el servidor confirme que los tiene.`,
+    );
+    if (sure) void job("Archivando", (progress) => archiveSemester(loadConfig(), id, progress));
+  };
+  const free = (id: string) =>
+    void job("Liberando espacio", async () => {
+      const { kept } = await freeSemester(loadConfig(), id);
+      if (kept) onError(`${kept === 1 ? "Un cuaderno se quedó" : `${kept} cuadernos se quedaron`} en el iPad: el servidor no tiene una copia igual.`);
+    });
+  const active = data.semesters.filter((s) => !s.archived), archived = data.semesters.filter((s) => s.archived);
 
   const guard = (action: Promise<unknown>) => action.catch(() => onError("No se pudo guardar el cambio."));
   // shortcut: native prompt/confirm dialogs; replace with in-app dialogs if they feel out of place on the iPad.
@@ -97,11 +134,14 @@ export function Library({ onOpen, onErrors, onSearch, onError }: Props) {
         <button type="button" className="quiet" onClick={onSearch}>Buscar</button>
         <button type="button" onClick={onErrors}>{data.pending ? `Mis errores (${data.pending})` : "Mis errores"}</button>
       </header>
-      {data.semesters.map((semester) => (
+      <BackupLine onError={onError} />
+      {working && <div className="banner" role="status">{working}</div>}
+      {active.map((semester) => (
         <section key={semester.id}>
           <header>
             <h2>Semestre {semester.name}</h2>
             <button type="button" className="quiet" onClick={() => askRename("semester", semester.id, semester.name)}>Renombrar</button>
+            <button type="button" className="quiet" disabled={!!working} onClick={() => archive(semester.id, semester.name)}>Archivar</button>
             <button type="button" className="quiet danger" onClick={() => askDelete(`el semestre ${semester.name}`, () => deleteSemester(semester.id))}>Borrar</button>
           </header>
           <div className="subjects">
@@ -125,15 +165,15 @@ export function Library({ onOpen, onErrors, onSearch, onError }: Props) {
                       const menu = `notebook-${notebook.id}`;
                       return (
                         <li key={notebook.id}>
-                          <button type="button" className="cover" aria-label={`Abrir el cuaderno ${notebook.title}`} onClick={() => onOpen(notebook.id)}>
+                          <button type="button" className="cover" aria-label={`Abrir el cuaderno ${notebook.title}`} onClick={() => open(notebook)}>
                             {pages[0] ? <Thumbnail page={pages[0]} width={COVER_W} /> : <span className="blank" />}
                             <strong>{notebook.title}</strong>
-                            <small>{pages.length === 1 ? "1 página" : `${pages.length} páginas`}</small>
+                            <small>{notebook.evicted ? "En el servidor" : pages.length === 1 ? "1 página" : `${pages.length} páginas`}</small>
                           </button>
                           <button type="button" className="quiet more" aria-label={`Opciones del cuaderno ${notebook.title}`} popoverTarget={menu}>⋯</button>
                           <div id={menu} popover="auto" className="menu sheet">
                             <p>{notebook.title}</p>
-                            <button type="button" popoverTarget={menu} popoverTargetAction="hide" onClick={() => onOpen(notebook.id)}>Abrir</button>
+                            <button type="button" popoverTarget={menu} popoverTargetAction="hide" onClick={() => open(notebook)}>Abrir</button>
                             <button type="button" popoverTarget={menu} popoverTargetAction="hide" onClick={() => askRename("notebook", notebook.id, notebook.title)}>Cambiar nombre</button>
                             <button type="button" popoverTarget={menu} popoverTargetAction="hide" disabled={i === 0} onClick={() => void guard(moveNotebook(notebook.id, -1))}>Mover antes</button>
                             <button type="button" popoverTarget={menu} popoverTargetAction="hide" disabled={i === notebooks.length - 1} onClick={() => void guard(moveNotebook(notebook.id, 1))}>Mover después</button>
@@ -174,6 +214,73 @@ export function Library({ onOpen, onErrors, onSearch, onError }: Props) {
       <section>
         <h2>Nuevo semestre</h2>
         <AddForm label="Agregar semestre" placeholder="Por ejemplo 2027-1" onAdd={(name) => guard(createSemester(name))} />
+      </section>
+      {archived.length > 0 && (
+        <section className="archived">
+          <h2>Semestres archivados</h2>
+          <p className="muted">Sus cuadernos están en el servidor. Se abren con conexión y solo para leer.</p>
+          <div className="subjects">
+            {archived.map((semester) => {
+              const subjects = data.subjects.filter((s) => s.semester_id === semester.id);
+              const notebooks = data.notebooks.filter((n) => subjects.some((s) => s.id === n.subject_id));
+              return (
+                <article key={semester.id} className="subject">
+                  <header>
+                    <h3>Semestre {semester.name}</h3>
+                    {notebooks.some((n) => !n.evicted) && (
+                      <button type="button" className="quiet" disabled={!!working} onClick={() => free(semester.id)}>Liberar espacio</button>
+                    )}
+                    <button type="button" className="quiet" disabled={!!working} onClick={() => void job("Desarchivando", (progress) => unarchiveSemester(loadConfig(), semester.id, progress))}>
+                      Desarchivar
+                    </button>
+                  </header>
+                  <ul>
+                    {notebooks.map((notebook) => (
+                      <li key={notebook.id}>
+                        <button type="button" className="open" disabled={!!working} onClick={() => open(notebook)}>
+                          {subjects.find((s) => s.id === notebook.subject_id)?.name} · {notebook.title}
+                        </button>
+                        <small className="muted">{notebook.evicted ? "En el servidor" : "Descargado"}</small>
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
+      <section className="recover">
+        <h2>Recuperar del servidor</h2>
+        <p className="muted">Si este iPad es nuevo o Safari borró sus datos, aquí aparecen los cuadernos que el servidor guarda y este iPad no tiene.</p>
+        <button type="button" disabled={!!working} onClick={() => void job("Buscando en el servidor", async () => setLost(await recoverable(loadConfig())))}>
+          Buscar en el servidor
+        </button>
+        {lost && !lost.length && <p className="muted">El servidor no tiene ningún cuaderno que falte aquí.</p>}
+        {lost && lost.length > 0 && (
+          <ul className="lost">
+            {lost.map((card) => (
+              <li key={card.id}>
+                <span>
+                  <strong>{card.title}</strong> · {card.subject_name || "sin materia"} · {card.semester_name || "sin semestre"} ·{" "}
+                  {card.pages === 1 ? "1 página" : `${card.pages} páginas`}
+                </span>
+                <button
+                  type="button"
+                  disabled={!!working}
+                  onClick={() =>
+                    void job("Recuperando", async () => {
+                      await recoverNotebook(loadConfig(), card);
+                      setLost((now) => now?.filter((c) => c.id !== card.id) ?? null);
+                    })
+                  }
+                >
+                  Recuperar
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </main>
   );

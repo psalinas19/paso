@@ -44,7 +44,7 @@ export class ImportError extends Error {}
 const BACKGROUNDS: Page["background"][] = ["grid", "ruled", "blank"];
 const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
-function readStroke(raw: unknown, pageId: string, where: string): Stroke {
+function readStroke(raw: unknown, pageId: string, where: string, keepId = false): Stroke {
   const s = raw as Partial<Stroke> | null;
   if (!s || typeof s !== "object") throw new ImportError(`${where}: hay un trazo que no se puede leer.`);
   if (s.format_version !== STROKE_FORMAT_VERSION) {
@@ -57,7 +57,8 @@ function readStroke(raw: unknown, pageId: string, where: string): Stroke {
   if (!valid) throw new ImportError(`${where}: hay un trazo dañado.`);
   return {
     format_version: STROKE_FORMAT_VERSION,
-    id: crypto.randomUUID(),
+    // A restore keeps the id: the marks of a review point at strokes by id.
+    id: keepId && typeof s.id === "string" && s.id ? s.id : crypto.randomUUID(),
     page_id: pageId,
     tool: s.tool!,
     color: s.color!,
@@ -113,6 +114,45 @@ export async function importNotebook(data: unknown, subjectId: string): Promise<
     await db.strokes.bulkAdd(strokes);
   });
   return notebookId;
+}
+
+/**
+ * Put the pages of an existing notebook back exactly as a server copy has
+ * them: same page ids, same stroke ids, so reviews, marks, graphs and practice
+ * exercises that point at them still do. Whatever pages the notebook had here
+ * are replaced. Checked whole before the first write; one transaction.
+ */
+export async function restoreNotebook(data: unknown, notebookId: string): Promise<void> {
+  const file = data as Partial<NotebookExport> | null;
+  if (!file || typeof file !== "object" || file.format !== "paso-notebook" || !Array.isArray(file.pages)) {
+    throw new ImportError("Lo que devolvió el servidor no es un respaldo de cuaderno de Paso.");
+  }
+  if (file.format_version !== EXPORT_FORMAT_VERSION) {
+    throw new ImportError(`El respaldo es de un formato (versión ${String(file.format_version)}) que esta versión de la app no conoce.`);
+  }
+  if (file.notebook?.id !== notebookId) throw new ImportError("El respaldo del servidor es de otro cuaderno.");
+  const pages: Page[] = [];
+  const strokes: Stroke[] = [];
+  file.pages.forEach((entry, index) => {
+    const where = `Página ${index + 1}`;
+    const id = entry?.page?.id, background = entry?.page?.background;
+    if (!entry || typeof id !== "string" || !id || !Array.isArray(entry.strokes) || !BACKGROUNDS.includes(background)) {
+      throw new ImportError(`${where}: no se puede leer.`);
+    }
+    pages.push({ id, notebook_id: notebookId, position: index, background });
+    for (const raw of entry.strokes) strokes.push(readStroke(raw, id, where, true));
+  });
+  if (!pages.length) pages.push({ id: crypto.randomUUID(), notebook_id: notebookId, position: 0, background: "grid" });
+  await db.transaction("rw", db.notebooks, db.pages, db.strokes, async () => {
+    if (!(await db.notebooks.get(notebookId))) throw new ImportError("Ese cuaderno ya no está en la biblioteca.");
+    for (const page of await loadPages(notebookId)) {
+      await db.strokes.where("[page_id+created_at]").between([page.id, Dexie.minKey], [page.id, Dexie.maxKey]).delete();
+      await db.pages.delete(page.id);
+    }
+    await db.pages.bulkAdd(pages);
+    await db.strokes.bulkPut(strokes);
+    await db.notebooks.update(notebookId, { evicted: false });
+  });
 }
 
 /** Read a file the user picked and import it. */

@@ -7,6 +7,7 @@ import { ExportDialog } from "../export/ExportDialog";
 import { useLiveQuery } from "dexie-react-hooks";
 import { loadConfig, postCheck, postPlot, postCorrection, postExplain, postHint, postSolve, streamChat, type CheckResponse } from "../review/api";
 import { enqueue, sendQueued, toReview } from "../review/queue";
+import { markPending, uploadPending } from "../backup/sync";
 import { changeInBank, followReview, refreshBank, removeFromBank, saveToBank } from "../errors/bank";
 import { ExerciseBar } from "../practice/ExerciseBar";
 import { exerciseOnPage, followExercise } from "../practice/rounds";
@@ -60,6 +61,26 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
   const reviews = useLiveQuery(() => db.reviews.where("notebook_id").equals(notebookId).toArray(), [notebookId]);
   // Reviews asked for offline and still waiting to be sent.
   const waiting = useLiveQuery(() => db.queue.where("notebook_id").equals(notebookId).count(), [notebookId]) ?? 0;
+  // A notebook of an archived semester is read, not written on (SPEC 5).
+  const readOnly = useLiveQuery(async () => {
+    const notebook = await db.notebooks.get(notebookId);
+    const subject = notebook && (await db.subjects.get(notebook.subject_id));
+    return !!(subject && (await db.semesters.get(subject.semester_id))?.archived);
+  }, [notebookId]) ?? false;
+  useEffect(() => {
+    // The server's copy follows in the background: every few minutes, when the
+    // app is put away, and on leaving the notebook. Free, and silent when it cannot.
+    const upload = () => void uploadPending(loadConfig());
+    const hidden = () => document.visibilityState === "hidden" && upload();
+    const timer = setInterval(upload, 3 * 60_000);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", hidden);
+      // After the last stroke has had time to reach the database.
+      setTimeout(upload, 2500);
+    };
+  }, [notebookId]);
   // Practice: the exercise that lives on the page in view, if this notebook holds a round.
   const rounds = useLiveQuery(() => db.practice.where("notebook_id").equals(notebookId).toArray(), [notebookId]);
   const pageIds = useLiveQuery(() => loadPages(notebookId).then((pages) => pages.map((p) => p.id)), [notebookId, revision, where.total]);
@@ -102,7 +123,11 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
   useEffect(() => {
     const c = new NotebookCanvas(hostRef.current!, inkRef.current!, overlayRef.current!, notebookId, {
       onError,
-      onState: setState,
+      onState: (next) => {
+        setState(next);
+        // Something was written, erased or moved: the server's copy is now behind.
+        if (next.canUndo || next.canRedo) markPending(notebookId);
+      },
       onEraseEnd: () => setActive(writingTool.current),
       onPage: (current, total) => setWhere({ current, total }),
       onMark: (mark, x, y) => {
@@ -122,6 +147,7 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
 
   useEffect(() => canvas.current?.setTool(tool), [tool, notebookId, revision]);
   useEffect(() => canvas.current?.setGestures(gestures), [gestures, notebookId, revision]);
+  useEffect(() => canvas.current?.setReadOnly(readOnly), [readOnly, notebookId, revision]);
   useEffect(() => canvas.current?.setReviews(reviews ?? []), [reviews, notebookId, revision]);
   useEffect(() => canvas.current?.setScribbleErase(scribble), [scribble, notebookId, revision]);
   useEffect(() => savePrefs({ active, pen, size, gestures, scribble }, writingTool.current), [active, pen, size, gestures, scribble]);
@@ -255,7 +281,8 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
     const pageId = canvas.current?.currentPageId();
     if (pageId) void action(pageId).then(() => setRevision((r) => r + 1), failed(what));
   };
-  const menu = [
+  /** `changes` marks what alters the notebook or how it is written on: left out of an archived one. */
+  const allMenu: { label: string; run: () => void; danger?: boolean; changes?: boolean }[] = [
     { label: "Páginas…", run: () => setPagesOpen(true) },
     { label: "Exportar…", run: () => setExporting(true) },
     { label: "Revisiones guardadas", run: () => setPanel({ kind: "history" }) },
@@ -263,16 +290,19 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
     { label: graphs ? `Gráficas guardadas (${graphs})` : "Gráficas guardadas", run: () => setGraphsOpen(true) },
     { label: "Ajustes de revisión…", run: () => setSettings(true) },
     {
+      changes: true,
       label: gestures ? "Gestos de deshacer: activados (tocar para apagar)" : "Gestos de deshacer: apagados (tocar para activar)",
       run: () => setGestures((on) => !on),
     },
     {
+      changes: true,
       label: scribble ? "Garabatear para borrar: activado (tocar para apagar)" : "Garabatear para borrar: apagado (tocar para activar)",
       run: () => setScribble((on) => !on),
     },
-    { label: "Subir esta página", run: onPage((id) => movePage(id, -1), "mover la página") },
-    { label: "Bajar esta página", run: onPage((id) => movePage(id, 1), "mover la página") },
+    { changes: true, label: "Subir esta página", run: onPage((id) => movePage(id, -1), "mover la página") },
+    { changes: true, label: "Bajar esta página", run: onPage((id) => movePage(id, 1), "mover la página") },
     {
+      changes: true,
       label: "Borrar esta página",
       danger: true,
       run: () => {
@@ -280,6 +310,9 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
       },
     },
   ];
+
+  // Archived: only what looks, nothing that changes the notebook.
+  const menu = readOnly ? allMenu.filter((item) => !item.changes) : allMenu;
 
   return (
     <>
@@ -295,6 +328,7 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
         pen={pen}
         size={size}
         {...state}
+        readOnly={readOnly}
         onTool={choose}
         onPen={(i) => {
           setPen(i);
@@ -311,6 +345,7 @@ export function CanvasView({ notebookId, startPageId, openReviewId, onError, onL
         onLibrary={onLibrary}
         menu={menu}
       />
+      {readOnly && <div className="banner readonly" role="status">Semestre archivado: este cuaderno es de solo lectura.</div>}
       {plotting && <div className="banner" role="status">Leyendo la ecuación para graficarla…</div>}
       {graph && (
         <PlotCard

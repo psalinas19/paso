@@ -24,6 +24,8 @@ export interface Notebook {
   subject_id: string;
   title: string;
   position: number;
+  /** Its pages are not on this iPad: the semester was archived and the server holds them (SPEC 5). */
+  evicted?: boolean;
 }
 
 export interface Page {
@@ -177,11 +179,16 @@ export function loadPages(notebookId: string): Promise<Page[]> {
     .toArray();
 }
 
-/** First run: create a semester, subject, notebook and page so writing starts at once. */
-export function ensureFirstPage(): Promise<Page> {
+/**
+ * First run: create a semester, subject, notebook and page so writing starts at
+ * once. Null when there are notebooks but none has pages here (every semester
+ * is archived): then there is a library to show, not a blank start to invent.
+ */
+export function ensureFirstPage(): Promise<Page | null> {
   return db.transaction("rw", db.semesters, db.subjects, db.notebooks, db.pages, async () => {
     const existing = await db.pages.toCollection().first();
     if (existing) return existing;
+    if (await db.notebooks.count()) return null;
     const now = new Date();
     const semester = { id: crypto.randomUUID(), name: `${now.getFullYear()}-${now.getMonth() < 6 ? 1 : 2}`, archived: false };
     const subject = { id: crypto.randomUUID(), semester_id: semester.id, name: "General", slug: "general", template: "generic", tags: [] };

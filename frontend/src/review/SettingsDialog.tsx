@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { checkHealth, loadConfig, saveConfig, SPEEDS, type Speed } from "./api";
+import { describeServerBackup } from "../backup/describe";
+import { checkHealth, getBackupState, loadConfig, saveConfig, SPEEDS, type Speed } from "./api";
 
 /** Where the review backend is and the shared token. Stored on this iPad only. */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
@@ -22,7 +23,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     setStatus(null);
     try {
       await checkHealth(loadConfig());
-      setStatus({ ok: true, text: "Conexión correcta." });
+      // An older backend does not know the question: the connection is still fine.
+      const backup = await getBackupState(loadConfig()).then(describeServerBackup, () => "");
+      setStatus({ ok: true, text: `Conexión correcta. ${backup}`.trim() });
     } catch (error) {
       setStatus({ ok: false, text: (error as Error).message });
     }
