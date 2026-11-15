@@ -28,12 +28,24 @@ from PIL import UnidentifiedImageError
 from pydantic import BaseModel
 from sqlmodel import Session, func, select
 
+from app.api.common import UsageSummary
 from app.api.errors import ErrorOut, add_error_routes, entries_of, follow_correction
+from app.api.practice import (
+    EXAM_LOCKED,
+    Core,
+    ExerciseOut,
+    PracticeProgress,
+    add_practice_routes,
+    exam_locked,
+    exercise_of,
+    settle,
+)
 from app.cli_common import MissingApiKeyError, build_provider
 from app.config import Settings, get_settings
 from app.db import (
     ChatMessage,
     Check,
+    Exercise,
     UsageLog,
     current_steps,
     dump_steps,
@@ -73,12 +85,6 @@ EFFORTS = frozenset({"low", "medium", "high"})
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 
 
-class UsageSummary(BaseModel):
-    month_spend_usd: float
-    budget_usd: float
-    checks_this_month: int
-
-
 class ChatLine(BaseModel):
     role: str
     content: str
@@ -108,6 +114,10 @@ class CheckResponse(BaseModel):
     solution: Solution | None = None
     #: The steps of this review the student saved in the error bank.
     errors: list[ErrorOut] = []
+    #: The practice exercise this review attempts, and what the attempt did to
+    #: the streak of the mistake it targets (only on the call that scored it).
+    exercise: ExerciseOut | None = None
+    progress: PracticeProgress | None = None
     #: What this call cost, not the review's running total.
     cost_usd: float
     #: Where this call's time went, in seconds: waiting for the model, and
@@ -234,6 +244,11 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         )
         return usage.cost_usd
 
+    def refuse_if_exam(db: Session, row: Check) -> None:
+        # Exam mode (SPEC 6.6): no help on an exercise before an attempt is handed in.
+        if exam_locked(db, row):
+            raise HTTPException(409, EXAM_LOCKED)
+
     def stored(db: Session, check_id: str) -> tuple[Check, SubjectConfig]:
         found = db.get(Check, check_id)
         if found is None:
@@ -249,6 +264,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         cost: float,
         model_ms: float = 0.0,
         verify_seconds: float = 0.0,
+        progress: PracticeProgress | None = None,
     ) -> CheckResponse:
         steps, corrected = current_steps(row)
         recognition = RecognitionResult.model_validate_json(row.steps_json)
@@ -265,6 +281,8 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
             ),
             solution=Solution.model_validate_json(row.solution_json) if row.solution_json else None,
             errors=entries_of(db, row.id),
+            exercise=exercise_of(db, row),
+            progress=progress,
             cost_usd=round(cost, 4),
             model_seconds=round(model_ms / 1000, 2),
             verify_seconds=round(verify_seconds, 2),
@@ -278,11 +296,14 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         subject: Annotated[str, Form()],
         strokes: Annotated[str | None, Form()] = None,
         effort: Annotated[str | None, Form()] = None,
+        exercise_id: Annotated[str | None, Form()] = None,
     ) -> CheckResponse:
         try:
             subject_config = load_subject_cached(subject)
         except SubjectNotFoundError as exc:
             raise HTTPException(404, str(exc)) from exc
+        if exercise_id and db.get(Exercise, exercise_id) is None:
+            raise HTTPException(404, "Ese ejercicio de repaso no existe en el backend.")
 
         refuse_over_budget(db)
 
@@ -321,11 +342,13 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
             verification_json=verification.model_dump_json(),
             model=recognition.model,
             prompt_version=recognition.prompt_version,
+            exercise_id=exercise_id or None,
         )
         db.add(row)
+        progress = settle(db, row, recognition.steps, verification)
         db.commit()
         reading = recognition.usage.latency_ms if recognition.usage and cost else 0
-        return respond(db, row, cost, reading, verifying)
+        return respond(db, row, cost, reading, verifying, progress)
 
     @app.post("/api/checks/{check_id}/steps/{step_id}", dependencies=auth)
     def correct(
@@ -380,8 +403,10 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         db.add(row)
         # A saved "mistake" that was only a misreading leaves the error bank.
         follow_correction(db, row.id, updated, verification)
+        # If this review decided a practice exercise, the corrected reading decides it again.
+        progress = settle(db, row, updated, verification)
         db.commit()
-        return respond(db, row, cost, usage.latency_ms, verifying)
+        return respond(db, row, cost, usage.latency_ms, verifying, progress)
 
     @app.post("/api/checks/{check_id}/hint", dependencies=auth)
     def hint(db: Db, check_id: str, effort: Annotated[str | None, Form()] = None) -> CheckResponse:
@@ -390,6 +415,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         if row.hint_json:
             return respond(db, row, 0.0)  # already paid for; a correction clears it
 
+        refuse_if_exam(db, row)
         refuse_over_budget(db)
         steps, _ = current_steps(row)
         verification = VerificationResult.model_validate_json(row.verification_json)
@@ -435,6 +461,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         if row.explanation_json:
             return respond(db, row, 0.0)  # already paid for; a correction clears it
 
+        refuse_if_exam(db, row)
         refuse_over_budget(db)
         steps, _ = current_steps(row)
         verification = VerificationResult.model_validate_json(row.verification_json)
@@ -465,6 +492,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         if row.solution_json:
             return respond(db, row, 0.0)
 
+        refuse_if_exam(db, row)
         refuse_over_budget(db)
         steps, _ = current_steps(row)
         verification = VerificationResult.model_validate_json(row.verification_json)
@@ -520,6 +548,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
             raise HTTPException(422, "Escribe tu pregunta.")
         if len(message) > tutor_chat.MAX_MESSAGE_CHARS:
             raise HTTPException(422, "La pregunta es demasiado larga. Hazla más corta.")
+        refuse_if_exam(db, row)
         refuse_over_budget(db)
         llm = model(effort)
 
@@ -572,6 +601,18 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         )
 
     add_error_routes(app, Db, auth)
+    add_practice_routes(
+        app,
+        Db,
+        auth,
+        Core(
+            model=model,
+            refuse_over_budget=refuse_over_budget,
+            charge=charge,
+            summary=summary,
+            verifier_for=verifier_for,
+        ),
+    )
     return app
 
 

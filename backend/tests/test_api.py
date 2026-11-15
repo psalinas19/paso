@@ -12,7 +12,15 @@ from sqlmodel import Session, select
 from app.api.main import create_app
 from app.config import Settings
 from app.db import Check, UsageLog, make_engine
-from app.llm.base import ExplanationDraft, HintDraft, ProviderError, ProviderResult, SolutionDraft
+from app.llm.base import (
+    ExerciseDraft,
+    ExplanationDraft,
+    HintDraft,
+    PracticeDraft,
+    ProviderError,
+    ProviderResult,
+    SolutionDraft,
+)
 from app.schemas import StepKind as K
 from app.schemas import StepRelation as R
 from app.schemas import Usage
@@ -38,6 +46,16 @@ class FakeProvider:
         self.hint_images: list[object] = []
         self.fail = False
         self.chats: list[tuple] = []
+        #: What the next page reads as; None for the default development with a mistake.
+        self.page = None
+        #: Practice exercises the model writes: (slot, statement, data, answer).
+        #: The last one is broken: its answer does not solve its own equation.
+        self.exercises = [
+            (1, "Resuelve $2x + 4 = 10$.", ["Eq(2*x + 4, 10)"], "Eq(x, 3)"),
+            (2, "Resuelve $3x - 6 = 0$.", ["Eq(3*x - 6, 0)"], "Eq(x, 2)"),
+            (3, "Resuelve $x + 1 = 5$.", ["Eq(x + 1, 5)"], "Eq(x, 4)"),
+            (4, "Resuelve $x - 1 = 5$.", ["Eq(x - 1, 5)"], "Eq(x, 7)"),
+        ]
         #: What the model answers when asked to explain.
         self.explanation = {
             "notes": [("s2", "Restaste 4 en ambos lados."), ("s3", "Dividiste mal."), ("s9", "?")],
@@ -56,7 +74,8 @@ class FakeProvider:
         del image, system_prompt, instruction
         self.calls += 1
         return ProviderResult(
-            steps=[
+            steps=self.page
+            or [
                 mkstep("s1", "Eq(2*x + 4, 10)", K.EQUATION, R.GIVEN),
                 mkstep("s2", "Eq(2*x, 6)", K.EQUATION, R.EQUIVALENT, ("s1",)),
                 mkstep("s3", "Eq(x, 4)", K.EQUATION, R.EQUIVALENT, ("s2",)),  # wrong: x = 3
@@ -106,6 +125,25 @@ class FakeProvider:
             next_step="",
             takeaway="Lo que haces de un lado, hazlo del otro.",
             usage=Usage(endpoint="explain", model=self.model, cost_usd=0.03),
+        )
+
+    def write_exercises(self, system_prompt, instruction):
+        self.calls += 1
+        self.instructions.append(system_prompt.text + instruction)
+        if self.fail:
+            raise ProviderError("El API respondió 529: saturado")
+        drafts = [
+            ExerciseDraft(
+                slot=slot,
+                statement=statement,
+                data=[mkstep(f"g{i}", d, K.EQUATION, R.GIVEN) for i, d in enumerate(data, 1)],
+                answer=mkstep("r1", answer, K.EQUATION, R.RESULT, ("g1",)),
+            )
+            for slot, statement, data, answer in self.exercises
+        ]
+        return PracticeDraft(
+            exercises=drafts,
+            usage=Usage(endpoint="practice", model=self.model, cost_usd=0.03),
         )
 
     def chat(self, system_prompt, context, turns, image):
@@ -929,3 +967,189 @@ def test_the_browser_may_send_json_and_use_patch_and_delete(client):
         )
         assert allowed.status_code == 200, method
         assert method in allowed.headers["access-control-allow-methods"]
+
+
+# --- practice mode (4b) -------------------------------------------------------
+
+CLEAN = [
+    ("s1", "Eq(2*x + 4, 10)", R.GIVEN, ()),
+    ("s2", "Eq(2*x, 6)", R.EQUIVALENT, ("s1",)),
+    ("s3", "Eq(x, 3)", R.EQUIVALENT, ("s2",)),
+]
+
+
+def page(lines):
+    return [mkstep(i, text, K.EQUATION, rel, parents) for i, text, rel, parents in lines]
+
+
+def practice(client, provider, **body):
+    """A round of practice built on one saved arithmetic mistake in «Álgebra»."""
+    first = post_check(client).json()
+    save_error(client, first["id"], "s3", subject_name="Álgebra", error_type="arithmetic")
+    request = {"subject_name": "Álgebra", **body}
+    response = client.post("/api/review/generate", headers=AUTH, json=request)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def attempt(client, exercise_id):
+    return post_check(client, data={"subject": "general", "exercise_id": exercise_id}).json()
+
+
+def test_practice_is_built_from_the_bank_and_drops_a_broken_exercise(client, provider):
+    made = practice(client, provider, count=4)
+
+    sent = provider.instructions[-1]
+    # Our code, not the model, decides what each exercise goes after.
+    assert "Escribe 4 ejercicios" in sent and sent.count("Error aritmético (`arithmetic`)") == 4
+    assert "Pasos suyos con ese error" in sent and "No copies su ejercicio" in sent
+    # The fourth exercise's answer does not solve its own equation: it never reaches the student.
+    assert [e["statement"] for e in made["exercises"]] == [
+        "Resuelve $2x + 4 = 10$.",
+        "Resuelve $3x - 6 = 0$.",
+        "Resuelve $x + 1 = 5$.",
+    ]
+    assert {e["status"] for e in made["exercises"]} == {"pending"}
+    assert {e["error_label"] for e in made["exercises"]} == {"Error aritmético"}
+    # The expected result stays hidden until an attempt is handed in.
+    assert all(e["answer_latex"] is None for e in made["exercises"])
+    assert (made["subject"], made["subject_name"], made["exam"]) == ("general", "Álgebra", False)
+    assert made["cost_usd"] == 0.03
+
+
+def test_practice_needs_pending_mistakes_and_spends_nothing_without_them(client, provider):
+    def generate(**body):
+        return client.post("/api/review/generate", headers=AUTH, json=body)
+
+    empty = generate(subject_name="Álgebra")
+    assert empty.status_code == 422 and "banco de errores" in empty.json()["detail"]
+    assert provider.calls == 0
+
+    made = practice(client, provider)
+    calls = provider.calls
+    # An overcome mistake is not practised again.
+    entry = bank(client)[0]
+    client.patch(f"/api/errors/{entry['id']}", headers=AUTH, json={"resolved": True})
+    assert generate(subject_name="Álgebra").status_code == 422
+    assert generate(subject_name="Álgebra", count=9).status_code == 422
+    assert generate(subject_name="Otra materia").status_code == 422
+    assert provider.calls == calls and made["exercises"]
+    assert client.post("/api/review/generate", json={"subject_name": "x"}).status_code == 401
+
+
+def test_a_failed_model_call_or_no_usable_exercise_is_reported(client, provider):
+    first = post_check(client).json()
+    save_error(client, first["id"], "s3", subject_name="Álgebra")
+    provider.exercises = [(1, "Resuelve $x - 1 = 5$.", ["Eq(x - 1, 5)"], "Eq(x, 7)")]
+
+    nothing = client.post("/api/review/generate", headers=AUTH, json={"subject_name": "Álgebra"})
+    assert nothing.status_code == 502 and "comprobación" in nothing.json()["detail"]
+
+    provider.fail = True
+    failed = client.post("/api/review/generate", headers=AUTH, json={"subject_name": "Álgebra"})
+    assert failed.status_code == 502 and "529" in failed.json()["detail"]
+
+
+def test_the_first_reviewed_attempt_decides_an_exercise(client, provider):
+    made = practice(client, provider)
+    one = made["exercises"][0]["id"]
+
+    # The default page ends in x = 4: a mistake.
+    body = attempt(client, one)
+    assert body["exercise"]["status"] == "failed" and body["exercise"]["check_id"] == body["id"]
+    assert body["progress"] == {
+        "error_type": "arithmetic",
+        "error_label": "Error aritmético",
+        "streak": 0,
+        "needed": 3,
+        "overcome": False,
+    }
+    # Now that it is decided, the proved result can be shown.
+    assert body["exercise"]["answer_latex"]
+
+    # Doing it again with the answer in sight changes nothing.
+    provider.page = page(CLEAN)
+    again = attempt(client, one)
+    assert again["exercise"]["status"] == "failed" and again["progress"] is None
+    assert again["exercise"]["check_id"] == body["id"]
+
+
+def test_three_clean_attempts_in_a_row_overcome_the_mistake(client, provider):
+    made = practice(client, provider)
+    provider.page = page(CLEAN)
+
+    streaks = [attempt(client, e["id"])["progress"] for e in made["exercises"]]
+
+    assert [p["streak"] for p in streaks] == [1, 2, 3]
+    assert [p["overcome"] for p in streaks] == [False, False, True]
+    assert [e["resolved"] for e in bank(client)] == [True]
+
+
+def test_a_mistake_in_between_resets_the_streak(client, provider):
+    made = practice(client, provider)
+    first, second, third = (e["id"] for e in made["exercises"])
+    provider.page = page(CLEAN)
+    assert attempt(client, first)["progress"]["streak"] == 1
+    provider.page = None  # the development with the mistake
+    assert attempt(client, second)["progress"]["streak"] == 0
+    provider.page = page(CLEAN)
+
+    assert attempt(client, third)["progress"]["streak"] == 1
+    assert [e["resolved"] for e in bank(client)] == [False]
+
+
+def test_a_page_with_only_the_statement_is_not_an_attempt(client, provider):
+    made = practice(client, provider)
+    provider.page = page(CLEAN[:1])
+
+    body = attempt(client, made["exercises"][0]["id"])
+
+    assert body["exercise"]["status"] == "pending" and body["progress"] is None
+    assert body["exercise"]["answer_latex"] is None
+    # Outside exam mode, help on the bare statement is allowed.
+    assert ask_hint(client, body["id"]).status_code == 200
+
+
+def test_fixing_a_misread_line_decides_the_exercise_again(client, provider):
+    made = practice(client, provider)
+    body = attempt(client, made["exercises"][0]["id"])
+    assert body["exercise"]["status"] == "failed"
+
+    provider.rebuilt = ("Eq(x, 3)", ["s2"])
+    fixed = correct(client, body["id"], "s3", "x = 3").json()
+
+    assert fixed["exercise"]["status"] == "passed"
+    assert fixed["progress"]["streak"] == 1
+
+
+def test_exam_mode_withholds_help_until_an_attempt_is_handed_in(client, provider):
+    made = practice(client, provider, exam=True)
+    exercise = made["exercises"][0]
+    assert exercise["exam"] is True
+    provider.page = page(CLEAN[:1])
+    bare = attempt(client, exercise["id"])
+    calls = provider.calls
+
+    for path in ("hint", "level/2", "solve"):
+        refused = client.post(f"/api/checks/{bare['id']}/{path}", headers=AUTH)
+        assert refused.status_code == 409 and "Modo examen" in refused.json()["detail"], path
+    asked = client.post(
+        f"/api/checks/{bare['id']}/chat", headers=AUTH, data={"message": "¿Cómo empiezo?"}
+    )
+    assert asked.status_code == 409 and provider.calls == calls
+
+    provider.page = page(CLEAN)
+    done = attempt(client, exercise["id"])
+    assert done["exercise"]["status"] == "passed"
+    # Handed in: help is open again, on either review of the exercise.
+    assert client.post(f"/api/checks/{bare['id']}/solve", headers=AUTH).status_code == 200
+    assert client.post(f"/api/checks/{done['id']}/level/2", headers=AUTH).status_code == 200
+
+
+def test_a_review_of_an_unknown_exercise_is_refused_before_spending(client, provider):
+    response = post_check(client, data={"subject": "general", "exercise_id": "nope"})
+
+    assert response.status_code == 404 and provider.calls == 0
+    # A review that attempts no exercise says so by saying nothing.
+    plain = post_check(client).json()
+    assert plain["exercise"] is None and plain["progress"] is None

@@ -283,6 +283,23 @@ class Explanation(BaseModel):
     prompt_version: str = ""
 
 
+class PracticeExercise(BaseModel):
+    """One practice exercise (SPEC 6.6), aimed at a mistake from the error bank."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    statement: str
+    #: The mistake it goes after: an id from the subject's taxonomy, or null
+    #: when the entries it was built from were never classified.
+    error_type: str | None = None
+    error_label: str | None = None
+    topic: str | None = None
+    #: The model's final result. Only ever shown when `answer_checked` is true.
+    answer_latex: str = ""
+    #: Our verifier proved the result from the statement's data.
+    answer_checked: bool = False
+
+
 class SolutionStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

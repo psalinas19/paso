@@ -49,6 +49,8 @@ class Check(SQLModel, table=True):
     max_level_shown: int = 1
     model: str
     prompt_version: str
+    #: The practice exercise this page is an attempt at, if any (SPEC 6.6).
+    exercise_id: str | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=_now, index=True)
 
 
@@ -88,6 +90,41 @@ class ErrorEntry(SQLModel, table=True):
     proved: bool
     resolved: bool = False
     created_at: datetime = Field(default_factory=_now, index=True)
+
+
+class PracticeSession(SQLModel, table=True):
+    """One round of practice (SPEC 6.6): a handful of exercises for one subject."""
+
+    id: str = Field(primary_key=True)
+    subject: str
+    subject_name: str = Field(index=True)
+    #: Exam mode: no help on an exercise until an attempt at it was handed in.
+    exam: bool = False
+    model: str
+    prompt_version: str
+    created_at: datetime = Field(default_factory=_now, index=True)
+
+
+class Exercise(SQLModel, table=True):
+    """One practice exercise and how the student's first attempt at it went."""
+
+    id: str = Field(primary_key=True)
+    session_id: str = Field(index=True)
+    position: int
+    #: Copied from the session: the streak of a mistake is counted per subject.
+    subject_name: str = Field(index=True)
+    statement: str
+    error_type: str | None = None
+    topic: str | None = None
+    answer_latex: str = ""
+    #: The verifier proved the model's answer from the statement's data.
+    answer_checked: bool = False
+    #: pending, or how the first reviewed attempt went: passed, failed, unchecked.
+    status: str = "pending"
+    #: The review that decided it.
+    check_id: str | None = None
+    decided_at: datetime | None = None
+    created_at: datetime = Field(default_factory=_now)
 
 
 class UsageLog(SQLModel, table=True):

@@ -127,6 +127,23 @@ class SolutionDraft:
     usage: Usage
 
 
+@dataclass
+class ExerciseDraft:
+    """One practice exercise as the model wrote it, before the verifier saw its answer."""
+
+    slot: int
+    statement: str
+    #: The statement's data and the model's final result, as steps the verifier can run.
+    data: list[Step]
+    answer: Step
+
+
+@dataclass
+class PracticeDraft:
+    exercises: list[ExerciseDraft]
+    usage: Usage
+
+
 class ProviderError(RuntimeError):
     """The provider could not produce a usable result."""
 
@@ -177,6 +194,10 @@ class LLMProvider(Protocol):
         image: PreparedImage | None,
     ) -> SolutionDraft:
         """Solve the problem on the page as structured steps our verifier can check."""
+        ...
+
+    def write_exercises(self, system_prompt: PromptSpec, instruction: str) -> PracticeDraft:
+        """Write practice exercises aimed at the mistakes listed in the instruction."""
         ...
 
     def chat(

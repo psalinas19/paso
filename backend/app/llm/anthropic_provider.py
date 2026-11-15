@@ -17,9 +17,11 @@ from pydantic import BaseModel
 
 from app.llm.base import (
     ChatTurn,
+    ExerciseDraft,
     ExplanationDraft,
     HintDraft,
     LLMProvider,
+    PracticeDraft,
     PreparedImage,
     PromptSpec,
     ProviderError,
@@ -29,12 +31,13 @@ from app.llm.base import (
 from app.llm.schema import (
     ExplanationPayload,
     HintPayload,
+    PracticePayload,
     RecognitionPayload,
     RecognizedStep,
     SolutionPayload,
 )
 from app.llm.usage import estimate_cost
-from app.schemas import Step, Usage
+from app.schemas import Step, StepRelation, Usage
 
 #: Generous enough for a full page of steps; the output is JSON, not prose. The
 #: model's own thinking counts against it too, so the short calls keep the same cap.
@@ -154,6 +157,37 @@ class AnthropicProvider(LLMProvider):
             check=payload.check,
             usage=usage,
         )
+
+    def write_exercises(self, system_prompt: PromptSpec, instruction: str) -> PracticeDraft:
+        payload, usage = self._parse(
+            system_prompt, self._content(instruction, None), PracticePayload, "practice"
+        )
+        exercises = []
+        for item in payload.exercises:
+            data = [
+                Step(
+                    id=f"g{number}",
+                    latex=datum.latex,
+                    sympy=datum.sympy,
+                    kind=datum.kind,
+                    relation=StepRelation.GIVEN,
+                    confidence=1.0,
+                )
+                for number, datum in enumerate(item.data, start=1)
+            ]
+            answer = Step(
+                id="r1",
+                latex=item.answer_latex,
+                sympy=item.answer_sympy,
+                kind=item.answer_kind,
+                relation=StepRelation.RESULT,
+                derives_from=[d.id for d in data],
+                confidence=1.0,
+            )
+            exercises.append(
+                ExerciseDraft(slot=item.slot, statement=item.statement, data=data, answer=answer)
+            )
+        return PracticeDraft(exercises=exercises, usage=usage)
 
     def chat(
         self,

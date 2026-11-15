@@ -154,3 +154,37 @@ class SolutionPayload(BaseModel):
     check: str = Field(
         description="How to check the result: substitute it, check units or a limit case."
     )
+
+
+class PracticeDatum(BaseModel):
+    """One piece of an exercise's statement, in the same shape as a transcribed step."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    latex: str = Field(description="The datum as it appears in the statement, KaTeX-compatible.")
+    sympy: str | None = Field(description="The datum in the SymPy dialect, or null.")
+    kind: StepKind
+
+
+class PracticeItem(BaseModel):
+    """One practice exercise written by the model."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    slot: int = Field(description="Number of the exercise in the list this one answers.")
+    statement: str = Field(
+        description="The statement, in Spanish, self-contained, formulas between $...$. "
+        "No hints, no mention of the mistake it targets, no answer."
+    )
+    data: list[PracticeDatum] = Field(description="Exactly the data of the statement.")
+    answer_latex: str = Field(description="The final result, KaTeX-compatible.")
+    answer_sympy: str | None = Field(
+        description="The final result in the SymPy dialect, or null if it cannot be written."
+    )
+    answer_kind: StepKind
+
+
+class PracticePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    exercises: list[PracticeItem] = Field(description="One exercise per number of the list.")
