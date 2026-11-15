@@ -27,7 +27,10 @@ const review: Review = {
   budget_usd: 20,
 };
 
-const actions = { onCorrect: async () => {}, onHint: async () => {}, onExplain: async () => {}, onSolve: async () => {}, onChat: async () => {} };
+const actions = {
+  onCorrect: async () => {}, onHint: async () => {}, onExplain: async () => {}, onSolve: async () => {}, onChat: async () => {},
+  onSaveError: async () => {}, onChangeError: async () => {}, onRemoveError: async () => {},
+};
 const text = (r: Review, withActions = true) =>
   renderToStaticMarkup(<Result review={r} actions={withActions ? actions : undefined} />).replace(/<[^>]+>/g, " ");
 
@@ -247,4 +250,37 @@ test("the chat offers questions that fit the review, and shows the conversation"
   const offline = renderToStaticMarkup(<Result review={talked} />);
   expect(offline).toContain("Lo que preguntaste");
   expect(offline).not.toContain("<textarea");
+});
+
+test("a failing step can be saved to the error bank; one that checked out cannot", () => {
+  const html = renderToStaticMarkup(<Result review={review} actions={actions} bank={{ saved: [], taxonomy: [] }} />);
+  // Only s2 failed: one offer, and it sits inside that step.
+  expect(html.match(/Guardar en mi banco de errores/g)).toHaveLength(1);
+  expect(html.indexOf("Guardar en mi banco de errores")).toBeGreaterThan(html.indexOf("step error"));
+  // A saved review opened without a backend offers nothing it could not do.
+  expect(text(review, false)).not.toContain("banco de errores");
+});
+
+test("a step already in the bank shows how it is filed instead of the offer", () => {
+  const saved = {
+    id: 7, check_id: "abc", step_id: "s2", subject: "general", subject_name: "Álgebra", topic: null, error_type: "sign", error_label: "Error de signo",
+    latex: "x = 4", detail: "", proved: true, resolved: false, created_at: "2026-11-15T10:00:00Z",
+  };
+  const taxonomy = [{ slug: "general", name: "General", topics: [], error_types: [{ id: "sign", label: "Error de signo", description: "" }, { id: "algebra", label: "Error algebraico", description: "" }] }];
+  const html = renderToStaticMarkup(<Result review={review} actions={actions} bank={{ saved: [saved], taxonomy }} />);
+
+  expect(html).toContain("En tu banco de errores");
+  expect(html).not.toContain("Guardar en mi banco de errores");
+  expect(html).toContain('<option value="sign" selected="">Error de signo</option>');
+  expect(html).toContain("Quitar del banco");
+});
+
+test("a step nobody could check is only offered to the bank when the help pointed at it", () => {
+  const unsure: Review = {
+    ...review,
+    verification: { steps: review.verification.steps.map((v) => ({ ...v, status: v.step_id === "s2" ? "unverifiable" as const : v.status })) },
+  };
+  expect(text(unsure)).not.toContain("guardarlo en mi banco");
+  const pointed: Review = { ...unsure, hint: { step_id: "s2", basis: "model_opinion", verified: "", hint: "Mira el signo.", error_type: null, error_label: null } };
+  expect(text(pointed)).toContain("Sí fue un error mío: guardarlo en mi banco");
 });

@@ -1137,3 +1137,182 @@ html:has(.library) body {
   font: inherit;
   cursor: pointer;
 }
+
+/* --- error bank ----------------------------------------------------------- */
+
+.library header.top {
+  margin-bottom: 24px;
+}
+
+.library header.top h1 {
+  flex: 1;
+  margin: 0;
+}
+
+.errors > header {
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.errors > header h1 {
+  margin: 0;
+}
+
+.errors .notice {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fffaf2;
+  border: 1px solid #f1d9b5;
+  color: #7a4a06;
+}
+
+.errors .frequent {
+  margin: 0;
+  padding-left: 24px;
+  line-height: 1.7;
+}
+
+.errors .toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-bottom: 12px;
+}
+
+.errors .toggle input {
+  width: 20px;
+  height: 20px;
+}
+
+/* Its own class, not the library's .subject: that one lays its list items out in a row. */
+.bank-subject {
+  padding: 16px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+}
+
+.bank-subject > header {
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.errors .types {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid #edf0f5;
+}
+
+.errors .types li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.errors .entries {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.errors .entry {
+  padding: 14px 16px;
+  border: 1px solid #dfe3ec;
+  border-left: 4px solid #b42318;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.errors .entry.resolved {
+  border-left-color: #16803c;
+}
+
+.errors .entry .when {
+  margin: 0 0 6px;
+  color: #475467;
+  font-size: 14px;
+}
+
+.errors .entry .latex {
+  overflow-x: auto;
+}
+
+.errors .entry .detail {
+  margin: 6px 0 0;
+}
+
+.errors .filing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.errors .filing label {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 200px;
+  color: #475467;
+  font-size: 14px;
+}
+
+.errors .filing :is(select, input, output) {
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1px solid #c5ccd9;
+  border-radius: 10px;
+  background: #fff;
+  color: #1f2a44;
+  font: inherit;
+  font-size: 16px; /* below 16px iOS zooms the page when the field is focused */
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.errors .filing output {
+  display: flex;
+  align-items: center;
+  border-style: dashed;
+}
+
+.errors .entry .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.errors .review-inline {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #edf0f5;
+}
+
+/* The review panel's own controls: saving a failing step to the bank. */
+.step .bank {
+  margin-top: 6px;
+}
+
+.step .bank.saved {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f2f4f7;
+}
+
+.step .bank.saved p {
+  margin: 0 0 6px;
+}
+
+.step .bank select {
+  min-height: 36px;
+  max-width: 100%;
+  font: inherit;
+  font-size: 16px;
+}

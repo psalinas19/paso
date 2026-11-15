@@ -245,6 +245,19 @@ Al final del panel de una revisión hay un chat. Sabe qué escribiste, cómo se 
 - La conversación se guarda con la revisión y se puede releer sin conexión.
 - Opcional: en `backend\.env`, `ANTHROPIC_MODEL_CHAT` usa un modelo más barato solo para el chat.
 
+### Mi banco de errores
+
+Cuando una revisión marca un paso con ✕, debajo aparece **Guardar en mi banco de errores**. Tócalo cuando el error sí fue tuyo (si fue una mala lectura, usa *Corregir lectura*). Guardar no cuesta nada.
+
+- **Dónde verlo:** en la biblioteca, botón **Mis errores**. Muestra cada materia con sus conteos por tipo de error y lo que más se repitió en los últimos 30 días.
+- **Tipo y tema:** si ya habías pedido la pista, llegan propuestos por el modelo; si no, los eliges tú. Siempre se pueden cambiar.
+- **Ya lo superé** lo aparta sin borrarlo; **Quitar** lo borra (para cuando no fue un error tuyo); **Ver la revisión** muestra el desarrollo completo.
+- Un paso que se comprobó como correcto no se puede guardar como error.
+- Si corriges una lectura y el paso resulta estar bien, su entrada sale sola del banco.
+- El banco se guarda en el backend y se puede **leer** sin conexión; para cambiar algo hace falta conexión.
+
+Los tipos de error y los temas de cada materia están en `backend/app/subjects/<materia>.yaml` y se pueden editar.
+
 ### Sin conexión
 
 Si tocas **Revisar** sin internet (o con el backend apagado), la selección se guarda en una cola y no se pierde. Cuando vuelva la conexión la app te avisa; para enviarlas, **⋯ → Revisiones en espera**. No se envían solas porque cada una cuesta.
@@ -289,4 +302,6 @@ Hay además un plan pendiente de tu aprobación sobre gestos de la libreta y la 
 
 **Fase 3 construida** (explicación, solución, chat y cola sin conexión), pendiente de probar con el modelo real.
 
-Después, la Fase 4 (banco de errores, modo repaso, búsqueda en todas las notas, exportar una revisión a LaTeX, graficar) y la Fase 5 (backend en un servidor para no depender de la laptop, respaldo automático, archivar semestres), según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.
+**Fase 4 en curso** ([plan](docs/plan-fase4.md)): el banco de errores está construido. Faltan el modo repaso, la búsqueda en todas las notas, exportar una revisión a LaTeX y graficar.
+
+Después, la Fase 5 (backend en un servidor para no depender de la laptop, respaldo automático, archivar semestres), según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.

@@ -41,6 +41,38 @@ export interface Hint {
   hint: string;
   error_type: string | null;
   error_label: string | null;
+  /** Which of the subject's topics the mistake belongs to, when the model proposed one. */
+  topic?: string | null;
+}
+
+/** One mistake saved in the error bank (SPEC 6.6). Mirrors backend/app/api/errors.py. */
+export interface BankError {
+  id: number;
+  /** The review it came from, and which of its steps. */
+  check_id: string;
+  step_id: string;
+  /** Slug of the subject configuration: decides which types and topics apply. */
+  subject: string;
+  /** The subject as named in the library; what the bank groups by. */
+  subject_name: string;
+  topic: string | null;
+  error_type: string | null;
+  error_label: string | null;
+  latex: string;
+  detail: string;
+  /** True when the verifier proved the step wrong; false when it could not check it. */
+  proved: boolean;
+  resolved: boolean;
+  /** ISO date, in UTC. */
+  created_at: string;
+}
+
+/** A subject's topics and error types, for the pickers. */
+export interface Taxonomy {
+  slug: string;
+  name: string;
+  topics: string[];
+  error_types: { id: string; label: string; description: string }[];
 }
 
 /**
@@ -85,6 +117,8 @@ export interface CheckResponse {
   hint?: Hint | null;
   explanation?: Explanation | null;
   solution?: Solution | null;
+  /** The steps of this review saved in the error bank. Absent from a backend older than the bank. */
+  errors?: BankError[];
   /** Cost of this call alone. */
   cost_usd: number;
   /** Seconds this call spent waiting for the model and checking the steps. */
@@ -150,9 +184,13 @@ export const LOW_CONFIDENCE = 0.7;
 
 async function call<T>(config: BackendConfig, path: string, init: RequestInit = {}): Promise<T> {
   if (!config.url || !config.token) throw new Error("Falta configurar la dirección del backend y el token en Ajustes de revisión.");
-  if (!navigator.onLine) throw new Error("Sin conexión: la revisión necesita internet.");
-  // Every request that reaches the model says how fast the user wants it.
-  if (init.method === "POST") {
+  if (!navigator.onLine) throw new Error("Sin conexión: esto necesita internet.");
+  const headers: Record<string, string> = { Authorization: `Bearer ${config.token}` };
+  if (typeof init.body === "string") {
+    // The error bank takes JSON; it never reaches the model, so it carries no speed.
+    headers["Content-Type"] = "application/json";
+  } else if (init.method === "POST") {
+    // Every request that reaches the model says how fast the user wants it.
     const body = init.body instanceof FormData ? init.body : new FormData();
     body.set("effort", SPEEDS.find((s) => s.id === config.speed)?.effort ?? "high");
     init = { ...init, body };
@@ -161,7 +199,7 @@ async function call<T>(config: BackendConfig, path: string, init: RequestInit = 
   try {
     response = await fetch(config.url + path, {
       ...init,
-      headers: { Authorization: `Bearer ${config.token}` },
+      headers,
       // A long page can take a while to read; give up rather than spin forever.
       signal: AbortSignal.timeout(90_000),
     });
@@ -172,6 +210,10 @@ async function call<T>(config: BackendConfig, path: string, init: RequestInit = 
   if (!response.ok) {
     // The backend explains itself in Spanish in `detail`.
     const detail = await response.json().then((body) => body.detail, () => null);
+    // A route the server has never heard of: it is running a version older than this app.
+    if (response.status === 404 && detail === "Not Found") {
+      throw new Error("El backend es de una versión anterior y no conoce esta función. Actualízalo (git pull) y vuelve a arrancarlo.");
+    }
     throw new Error(typeof detail === "string" ? detail : `El backend respondió con un error (${response.status}).`);
   }
   return response.json();
@@ -208,6 +250,33 @@ export function postExplain(config: BackendConfig, checkId: string): Promise<Che
 export function postSolve(config: BackendConfig, checkId: string): Promise<CheckResponse> {
   return call<CheckResponse>(config, `/api/checks/${encodeURIComponent(checkId)}/solve`, { method: "POST" });
 }
+
+// --- the error bank (SPEC 6.6). None of this reaches the model: it is free. ---
+
+const json = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body) });
+
+export const getErrors = (config: BackendConfig) => call<{ errors: BankError[] }>(config, "/api/errors").then((r) => r.errors);
+
+export const getTaxonomy = (config: BackendConfig) => call<{ subjects: Taxonomy[] }>(config, "/api/taxonomy").then((r) => r.subjects);
+
+/** Save one step of a review as a mistake. A field left out takes what the hint proposed. */
+export function postError(
+  config: BackendConfig,
+  entry: { check_id: string; step_id: string; subject_name?: string; error_type?: string | null; topic?: string | null },
+): Promise<BankError> {
+  return call<BankError>(config, "/api/errors", json("POST", entry));
+}
+
+/** Change only the fields sent; `null` clears a type or a topic. */
+export function patchError(
+  config: BackendConfig,
+  id: number,
+  change: { error_type?: string | null; topic?: string | null; resolved?: boolean },
+): Promise<BankError> {
+  return call<BankError>(config, `/api/errors/${id}`, json("PATCH", change));
+}
+
+export const deleteError = (config: BackendConfig, id: number) => call<{ ok: boolean }>(config, `/api/errors/${id}`, { method: "DELETE" });
 
 export interface ChatMessage {
   role: "user" | "assistant";

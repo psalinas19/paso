@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
 import { CanvasView } from "./canvas/CanvasView";
 import { db, ensureFirstPage } from "./db";
+import { ErrorsView } from "./errors/ErrorsView";
 import { Library } from "./library/Library";
 import { isNative } from "./native/pencil";
 
@@ -10,6 +11,8 @@ const LAST_NOTEBOOK = "paso:last-notebook";
 export function App() {
   // null = the library screen; undefined = still starting up.
   const [notebookId, setNotebookId] = useState<string | null | undefined>(undefined);
+  // Which screen is up when no notebook is open.
+  const [screen, setScreen] = useState<"library" | "errors">("library");
   const [error, setError] = useState("");
   const [offlineReady, setOfflineReady] = useState(false);
 
@@ -40,7 +43,8 @@ export function App() {
   return (
     <>
       {notebookId && <CanvasView notebookId={notebookId} onError={setError} onLibrary={() => setNotebookId(null)} />}
-      {notebookId === null && <Library onOpen={setNotebookId} onError={setError} />}
+      {notebookId === null && screen === "library" && <Library onOpen={setNotebookId} onErrors={() => setScreen("errors")} onError={setError} />}
+      {notebookId === null && screen === "errors" && <ErrorsView onBack={() => setScreen("library")} />}
       {error && (
         <div className="banner banner-error" role="alert" onClick={() => setError("")}>
           {error} <span aria-hidden="true">✕</span>

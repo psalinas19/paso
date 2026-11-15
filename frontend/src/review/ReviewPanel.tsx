@@ -4,7 +4,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { db, type QueuedReview, type Review } from "../db";
 import { Markdown } from "./markdown";
-import { LOW_CONFIDENCE, type Explanation, type Hint, type Solution, type Step, type StepStatus } from "./api";
+import { useTaxonomy } from "../errors/useTaxonomy";
+import { LOW_CONFIDENCE, type BankError, type Explanation, type Hint, type Solution, type Step, type StepStatus, type Taxonomy } from "./api";
 import { describeTiming, splitMath, summarise } from "./merge";
 
 export type ReviewState =
@@ -60,6 +61,69 @@ export interface ReviewActions {
   onSolve(): Promise<void>;
   /** Ask the tutor; `onText` receives the answer so far as it arrives. */
   onChat(message: string, onText: (soFar: string) => void): Promise<void>;
+  /** The error bank: keep a step as a mistake of mine, reclassify it, take it back out. Free. */
+  onSaveError(stepId: string): Promise<void>;
+  onChangeError(id: number, change: { error_type?: string | null; topic?: string | null; resolved?: boolean }): Promise<void>;
+  onRemoveError(id: number): Promise<void>;
+}
+
+/** What the panel knows of the error bank: this review's entries and the subjects' pickers. */
+export interface BankView {
+  saved: BankError[];
+  taxonomy: Taxonomy[];
+}
+
+/**
+ * Keep a failing step in the error bank (SPEC 6.6). Always a tap, never on its
+ * own: a misread line also looks like a mistake, and only the student knows
+ * which one this was.
+ */
+function BankControl({ stepId, proved, entry, taxonomy, actions }: {
+  stepId: string;
+  proved: boolean;
+  entry: BankError | undefined;
+  taxonomy: Taxonomy[];
+  actions: ReviewActions;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const run = (action: Promise<void>) => {
+    setBusy(true);
+    setError("");
+    action.then(() => setBusy(false), (e: Error) => {
+      setError(e.message);
+      setBusy(false);
+    });
+  };
+  if (!entry) {
+    return (
+      <div className="bank">
+        <button type="button" className="link" disabled={busy} onClick={() => run(actions.onSaveError(stepId))}>
+          {busy ? "Guardando…" : proved ? "Guardar en mi banco de errores" : "Sí fue un error mío: guardarlo en mi banco"}
+        </button>
+        {error && <p className="bad" role="alert">{error}</p>}
+      </div>
+    );
+  }
+  const types = taxonomy.find((t) => t.slug === entry.subject)?.error_types ?? [];
+  return (
+    <div className="bank saved">
+      <p>En tu banco de errores{entry.resolved ? " (superado)" : ""}.</p>
+      {types.length > 0 ? (
+        <label>
+          Tipo de error:{" "}
+          <select value={entry.error_type ?? ""} disabled={busy} onChange={(e) => run(actions.onChangeError(entry.id, { error_type: e.target.value || null }))}>
+            <option value="">Sin clasificar</option>
+            {types.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        </label>
+      ) : (
+        entry.error_label && <p>Tipo de error: {entry.error_label}</p>
+      )}
+      <button type="button" className="link" disabled={busy} onClick={() => run(actions.onRemoveError(entry.id))}>Quitar del banco</button>
+      {error && <p className="bad" role="alert">{error}</p>}
+    </div>
+  );
 }
 
 /** What to ask first, so the box is never a blank page (SPEC 6.4). */
@@ -307,7 +371,7 @@ function Help({ review, doubtful, actions }: { review: Review; doubtful: boolean
   );
 }
 
-export function Result({ review, actions }: { review: Review; actions?: ReviewActions }) {
+export function Result({ review, actions, bank }: { review: Review; actions?: ReviewActions; bank?: BankView }) {
   const [editing, setEditing] = useState<string | null>(null);
   const verdicts = new Map(review.verification.steps.map((v) => [v.step_id, v]));
   const corrected = new Set(review.corrected ?? []);
@@ -316,6 +380,7 @@ export function Result({ review, actions }: { review: Review; actions?: ReviewAc
   const notes = new Map((review.explanation?.notes ?? []).map((n) => [n.step_id, n.note]));
   const numberOf = (stepId: string) => review.recognition.steps.findIndex((step) => step.id === stepId) + 1;
   const pointed = new Set([review.hint?.step_id, review.explanation?.failing_step_id].filter(Boolean));
+  const banked = new Map((bank?.saved ?? []).map((entry) => [entry.step_id, entry]));
   return (
     <>
       <p className={summary.tone === "idle" ? "idle" : summary.tone}>{summary.text}</p>
@@ -360,6 +425,10 @@ export function Result({ review, actions }: { review: Review; actions?: ReviewAc
                       </div>
                     )}
                     {step.notes && <p className="muted">{step.notes}</p>}
+                    {/* A proved mistake, or one the help pointed at. Never a step that checked out. */}
+                    {actions && !given && (status === "error" || (status === "unverifiable" && hinted) || banked.has(step.id)) && status !== "correct" && (
+                      <BankControl stepId={step.id} proved={status === "error"} entry={banked.get(step.id)} taxonomy={bank?.taxonomy ?? []} actions={actions} />
+                    )}
                     {actions && (
                       <button type="button" className="link" onClick={() => setEditing(step.id)}>
                         Corregir lectura
@@ -461,6 +530,13 @@ function History({ notebookId, onOpen }: { notebookId: string; onOpen: (review: 
   );
 }
 
+/** A review with the backend at hand: adds what the error bank holds about it. */
+function LiveResult({ review, actions }: { review: Review; actions: ReviewActions }) {
+  const saved = useLiveQuery(() => db.errors.where("check_id").equals(review.id).toArray(), [review.id]) ?? [];
+  const taxonomy = useTaxonomy();
+  return <Result review={review} actions={actions} bank={{ saved, taxonomy }} />;
+}
+
 /** Side panel: what the model read, step by step, and what the verifier says about each. */
 export function ReviewPanel({ state, notebookId, actions, onSendQueued, onOpen, onClose }: {
   state: ReviewState;
@@ -482,7 +558,7 @@ export function ReviewPanel({ state, notebookId, actions, onSendQueued, onOpen, 
         </p>
       )}
       {state.kind === "error" && <p className="bad" role="alert">{state.message}</p>}
-      {state.kind === "result" && <Result review={state.review} actions={actions} />}
+      {state.kind === "result" && <LiveResult review={state.review} actions={actions} />}
       {state.kind === "queued" && (
         <p role="status">
           {state.reason} La guardé en la cola: {state.pending === 1 ? "hay una revisión en espera" : `hay ${state.pending} revisiones en espera`}.

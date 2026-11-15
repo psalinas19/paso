@@ -21,5 +21,6 @@ test("upgrading a phase 1 database keeps every stroke and adds the newer tables"
   expect(await db.pages.count()).toBe(1);
   expect(await db.reviews.count()).toBe(0);
   expect(await db.queue.count()).toBe(0); // v3: reviews waiting for a connection
-  expect(db.verno).toBe(3);
+  expect(await db.errors.count()).toBe(0); // v4: the error bank's offline copy
+  expect(db.verno).toBe(4);
 });

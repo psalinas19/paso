@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { ChatMessage, CheckResponse, Explanation, Hint, Solution } from "./review/api";
+import type { BankError, ChatMessage, CheckResponse, Explanation, Hint, Solution } from "./review/api";
 import type { Stroke } from "./strokes/format";
 
 export interface Semester {
@@ -86,6 +86,8 @@ export const db = new Dexie("paso") as Dexie & {
   strokes: EntityTable<Stroke, "id">;
   reviews: EntityTable<Review, "id">;
   queue: EntityTable<QueuedReview, "id">;
+  /** A copy of the error bank, which lives in the backend, to read it offline. */
+  errors: EntityTable<BankError, "id">;
 };
 
 // Schema changes go in a new .version(n) with an upgrade function; never edit this one.
@@ -106,6 +108,11 @@ db.version(2).stores({
 // v3 (phase 3): reviews asked for offline, waiting to be sent.
 db.version(3).stores({
   queue: "id, notebook_id, created_at",
+});
+
+// v4 (phase 4): the error bank as last fetched. The backend's copy is the one that counts.
+db.version(4).stores({
+  errors: "id, check_id, created_at",
 });
 
 /** Strokes of a page in drawing order. */

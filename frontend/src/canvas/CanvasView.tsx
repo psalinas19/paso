@@ -4,6 +4,7 @@ import { ExportDialog } from "../export/ExportDialog";
 import { useLiveQuery } from "dexie-react-hooks";
 import { loadConfig, postCheck, postCorrection, postExplain, postHint, postSolve, streamChat, type CheckResponse } from "../review/api";
 import { enqueue, sendQueued, toReview } from "../review/queue";
+import { changeInBank, followReview, removeFromBank, saveToBank } from "../errors/bank";
 import { MarkCard, type OpenMark } from "../review/MarkCard";
 import { mergeReview } from "../review/merge";
 import { ReviewPanel, type ReviewState } from "../review/ReviewPanel";
@@ -138,6 +139,8 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
     const response = await request(review);
     const next = mergeReview(review, response, (performance.now() - started) / 1000);
     await db.reviews.put(next);
+    // A correction can take a saved "mistake" back out of the error bank.
+    await followReview(next.id, response.errors);
     // The panel follows only if it is showing this same review.
     setPanel((now) => (now?.kind === "result" && now.review.id === next.id ? { kind: "result", review: next } : now));
   };
@@ -166,6 +169,13 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
       await db.reviews.put(next);
       setPanel((now) => (now?.kind === "result" && now.review.id === next.id ? { kind: "result", review: next } : now));
     },
+  };
+  const bankActions = {
+    onSaveError: async (stepId: string) => {
+      if (panel?.kind === "result") await saveToBank(loadConfig(), panel.review, stepId);
+    },
+    onChangeError: async (id: number, change: Parameters<typeof changeInBank>[2]) => void (await changeInBank(loadConfig(), id, change)),
+    onRemoveError: (id: number) => removeFromBank(loadConfig(), id),
   };
   const failed = (what: string) => () => onError(`No se pudo ${what}.`);
   /** Run a command on the page at the centre of the screen, then rebuild if it changed the pages. */
@@ -268,7 +278,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
         <ReviewPanel
           state={panel}
           notebookId={notebookId}
-          actions={actions}
+          actions={{ ...actions, ...bankActions }}
           onSendQueued={(item) => sendQueued(loadConfig(), item)}
           onOpen={(opened) => setPanel({ kind: "result", review: opened })}
           onClose={() => setPanel(null)}
