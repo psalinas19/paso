@@ -284,3 +284,33 @@ test("a step nobody could check is only offered to the bank when the help pointe
   const pointed: Review = { ...unsure, hint: { step_id: "s2", basis: "model_opinion", verified: "", hint: "Mira el signo.", error_type: null, error_label: null } };
   expect(text(pointed)).toContain("Sí fue un error mío: guardarlo en mi banco");
 });
+
+const practised = (status: "pending" | "passed" | "failed", exam = false, answer: string | null = null) => ({
+  id: "e1", session_id: "r1", position: 0, statement: "Resuelve $2x = 6$.", error_type: "sign", error_label: "Error de signo", topic: null,
+  status, exam, check_id: status === "pending" ? null : "abc", answer_latex: answer,
+});
+
+test("a review of a practice exercise says how the attempt went and shows the proved result", () => {
+  const attempt: Review = {
+    ...review,
+    practice: { exercise: practised("failed", false, "x = 3"), progress: { error_type: "sign", error_label: "Error de signo", streak: 0, needed: 3, overcome: false } },
+  };
+  const shown = text(attempt);
+  expect(shown).toContain("el primer intento tuvo un error");
+  expect(shown).toContain("Resultado esperado (comprobado con matemáticas)");
+  // The helps are still there: this is practice, not an exam.
+  expect(shown).toContain("Ver solución");
+  // Before an attempt there is no result to show.
+  expect(text({ ...review, practice: { exercise: practised("pending") } })).not.toContain("Resultado esperado");
+});
+
+test("exam mode keeps the helps and the chat away until an attempt is handed in", () => {
+  const locked = text({ ...review, practice: { exercise: practised("pending", true) } });
+  expect(locked).toContain("Modo examen");
+  for (const help of ["Pista", "Explícame", "Ver solución", "Pregúntale al tutor"]) expect(locked).not.toContain(help);
+  // The verifier's marks are not help: they stay.
+  expect(locked).toContain("No se sigue del paso anterior.");
+
+  const handedIn = text({ ...review, practice: { exercise: practised("failed", true) } });
+  for (const help of ["Pista", "Explícame", "Ver solución", "Pregúntale al tutor"]) expect(handedIn).toContain(help);
+});

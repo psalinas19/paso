@@ -4,8 +4,9 @@ import { db, type QueuedReview, type Review } from "../db";
 import { boxOf, type Box } from "../strokes/geometry";
 import type { Stroke } from "../strokes/format";
 import { postCheck, type BackendConfig, type CheckResponse } from "./api";
+import { followExercise } from "../practice/rounds";
 import { placeSteps } from "./marks";
-import { timingOf } from "./merge";
+import { practiceOf, timingOf } from "./merge";
 
 /** What was selected, wherever it comes from: the canvas just now, or the queue. */
 export interface Selection {
@@ -29,6 +30,7 @@ export function toReview(result: CheckResponse, selection: Selection, seconds?: 
     created_at: Date.now(),
     recognition: result.recognition,
     verification: result.verification,
+    practice: practiceOf(result),
     cost_usd: result.cost_usd,
     timing: timingOf(result, seconds),
     month_spend_usd: result.usage.month_spend_usd,
@@ -36,7 +38,7 @@ export function toReview(result: CheckResponse, selection: Selection, seconds?: 
   };
 }
 
-export async function enqueue(selection: Selection, subject: string, image: Blob): Promise<QueuedReview> {
+export async function enqueue(selection: Selection, subject: string, image: Blob, exerciseId?: string): Promise<QueuedReview> {
   const item: QueuedReview = {
     id: crypto.randomUUID(),
     notebook_id: selection.notebookId,
@@ -46,6 +48,7 @@ export async function enqueue(selection: Selection, subject: string, image: Blob
     subject,
     image: await image.arrayBuffer(),
     strokes: selection.strokes,
+    ...(exerciseId ? { exercise_id: exerciseId } : {}),
   };
   await db.queue.add(item);
   return item;
@@ -62,7 +65,7 @@ export function queued(notebookId: string): Promise<QueuedReview[]> {
  */
 export async function sendQueued(config: BackendConfig, item: QueuedReview): Promise<Review> {
   const started = performance.now();
-  const result = await postCheck(config, new Blob([item.image], { type: "image/png" }), item.subject, item.strokes);
+  const result = await postCheck(config, new Blob([item.image], { type: "image/png" }), item.subject, item.strokes, item.exercise_id);
   const review = toReview(
     result,
     { notebookId: item.notebook_id, pageId: item.page_id, box: item.box, strokes: item.strokes },
@@ -72,5 +75,6 @@ export async function sendQueued(config: BackendConfig, item: QueuedReview): Pro
     await db.reviews.put(review);
     await db.queue.delete(item.id);
   });
+  await followExercise(result.exercise);
   return review;
 }

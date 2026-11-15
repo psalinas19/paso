@@ -61,3 +61,25 @@ test("offline it says so, and an empty bank explains how to fill it", () => {
   expect(empty).toContain("Todavía no has guardado errores");
   expect(text([], { kind: "loading" })).not.toContain("Todavía no has guardado errores");
 });
+
+test("a subject with pending mistakes offers practice and shows its last round", () => {
+  const round = {
+    id: "r1", subject_name: "ED 2026-2", exam: false, created_at: Date.now(), notebook_id: "n", cost_usd: 0.03,
+    exercises: (["passed", "pending", "pending"] as const).map((status, i) => ({
+      id: `e${i}`, session_id: "r1", position: i, statement: "…", error_type: "sign", error_label: "Error de signo", topic: null,
+      status, exam: false, check_id: null, answer_latex: null, page_id: `p${i}`,
+    })),
+  };
+  const practise = { ...actions, onPractice: async () => {} };
+  const render = (entries: BankError[]) =>
+    renderToStaticMarkup(<BankScreen entries={entries} taxonomy={taxonomy} status={{ kind: "fresh" }} actions={practise} rounds={[round]} onBack={() => {}} onOpen={() => {}} />)
+      .replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+
+  const shown = render([entry(1)]);
+  expect(shown).toContain("Repasar");
+  expect(shown).toContain("1 de 3 sin errores, 2 por hacer");
+  // Nothing pending: nothing to aim the exercises at.
+  expect(render([entry(1, { resolved: true })])).not.toContain("Repasar");
+  // Without a way to start one (the plain screen of the earlier tests) there is no button either.
+  expect(text([entry(1)])).not.toContain("Repasar");
+});

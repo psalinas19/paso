@@ -1316,3 +1316,109 @@ html:has(.library) body {
   font: inherit;
   font-size: 16px;
 }
+
+/* --- practice mode ---------------------------------------------------------- */
+
+/* The statement of the exercise on the page in view: under the toolbar, foldable. */
+.exercise {
+  position: fixed;
+  top: calc(64px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 24px));
+  box-sizing: border-box;
+  border-radius: 12px;
+  border-left: 4px solid #475467;
+  background: rgb(255 255 255 / 0.96);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2), 0 6px 18px rgb(0 0 0 / 0.08);
+  color: #1f2a44;
+}
+
+.exercise.passed { border-left-color: #16803c; }
+.exercise.failed { border-left-color: #b42318; }
+
+.exercise .fold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.exercise .fold strong {
+  flex: 1;
+}
+
+.exercise .state {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f2f4f7;
+  color: #475467;
+  font-size: 13px;
+}
+
+.exercise.passed .state:first-of-type { background: #e7f6ec; color: #16803c; }
+.exercise.failed .state:first-of-type { background: #fdecea; color: #b42318; }
+
+.exercise .statement {
+  max-height: 34dvh;
+  overflow-y: auto;
+  padding: 0 12px 10px;
+  border-top: 1px solid #edf0f5;
+  font-size: 16px;
+  line-height: 1.45;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.exercise .statement p {
+  margin: 8px 0 0;
+}
+
+.exercise .statement .muted {
+  font-size: 13px;
+}
+
+/* In the review panel: how the attempt went. */
+.review .practice {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border-left: 4px solid #475467;
+  background: #f2f4f7;
+}
+
+.review .practice.ok { border-left-color: #16803c; background: #eef8f1; }
+.review .practice.bad { border-left-color: #b42318; background: #fff4f2; }
+
+.review .practice p {
+  margin: 0;
+}
+
+.review .practice .proved {
+  margin-top: 8px;
+}
+
+.review .practice h4 {
+  margin: 0;
+  color: #475467;
+  font-size: 13px;
+}
+
+.errors .round {
+  margin: 0 0 8px;
+  color: #475467;
+}
+
+/* The expected result keeps its own colour whatever the attempt's tone. */
+.review .practice .proved {
+  color: #1f2a44;
+}

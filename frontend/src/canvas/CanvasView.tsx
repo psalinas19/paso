@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { db, type Review } from "../db";
+import { db, loadPages, type Review } from "../db";
 import { ExportDialog } from "../export/ExportDialog";
 import { useLiveQuery } from "dexie-react-hooks";
 import { loadConfig, postCheck, postCorrection, postExplain, postHint, postSolve, streamChat, type CheckResponse } from "../review/api";
 import { enqueue, sendQueued, toReview } from "../review/queue";
-import { changeInBank, followReview, removeFromBank, saveToBank } from "../errors/bank";
+import { changeInBank, followReview, refreshBank, removeFromBank, saveToBank } from "../errors/bank";
+import { ExerciseBar } from "../practice/ExerciseBar";
+import { exerciseOnPage, followExercise } from "../practice/rounds";
 import { MarkCard, type OpenMark } from "../review/MarkCard";
 import { mergeReview } from "../review/merge";
 import { ReviewPanel, type ReviewState } from "../review/ReviewPanel";
@@ -17,8 +19,10 @@ import { loadPrefs, savePrefs } from "./prefs";
 import { PEN_COLORS, PEN_SIZES, Toolbar, type ToolKind } from "./Toolbar";
 
 /** A notebook: the toolbar (React) on top of the drawing surface (NotebookCanvas). */
-export function CanvasView({ notebookId, onError, onLibrary }: {
+export function CanvasView({ notebookId, startPageId, onError, onLibrary }: {
   notebookId: string;
+  /** Open on this page (a practice exercise) instead of the first one. */
+  startPageId?: string;
   onError: (message: string) => void;
   onLibrary: () => void;
 }) {
@@ -51,6 +55,10 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
   const reviews = useLiveQuery(() => db.reviews.where("notebook_id").equals(notebookId).toArray(), [notebookId]);
   // Reviews asked for offline and still waiting to be sent.
   const waiting = useLiveQuery(() => db.queue.where("notebook_id").equals(notebookId).count(), [notebookId]) ?? 0;
+  // Practice: the exercise that lives on the page in view, if this notebook holds a round.
+  const rounds = useLiveQuery(() => db.practice.where("notebook_id").equals(notebookId).toArray(), [notebookId]);
+  const pageIds = useLiveQuery(() => loadPages(notebookId).then((pages) => pages.map((p) => p.id)), [notebookId, revision, where.total]);
+  const practising = rounds?.length ? exerciseOnPage(rounds, pageIds?.[where.current - 1]) : undefined;
   const [backOnline, setBackOnline] = useState(false);
   useEffect(() => {
     // The connection is back: say so, but send nothing. Each review costs money (SPEC 6.9).
@@ -81,9 +89,10 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
       onInk: () => {
         if (!pinnedRef.current) setCard(null);
       },
-    });
+    }, startPageId);
     canvas.current = c;
     return () => c.destroy();
+    // startPageId is left out on purpose: it only matters when the notebook opens.
   }, [notebookId, onError, revision]);
 
   useEffect(() => canvas.current?.setTool(tool), [tool, notebookId, revision]);
@@ -114,17 +123,20 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
     const subject = notebook && (await db.subjects.get(notebook.subject_id));
     const slug = !subject || subject.template === "generic" ? "general" : subject.template;
     const image = await snapshot.image;
+    // A review of a practice page is an attempt at its exercise: the backend keeps score.
+    const exerciseId = rounds?.length ? exerciseOnPage(rounds, snapshot.pageId)?.exercise.id : undefined;
     const park = async (reason: string) => {
-      await enqueue(selection, slug, image);
+      await enqueue(selection, slug, image, exerciseId);
       setPanel({ kind: "queued", reason, pending: await db.queue.where("notebook_id").equals(notebookId).count() });
     };
     try {
       // No connection: keep it for later instead of failing (SPEC 6.9).
       if (!navigator.onLine) return await park("No hay conexión.");
       const started = performance.now();
-      const result = await postCheck(loadConfig(), image, slug, snapshot.strokes);
+      const result = await postCheck(loadConfig(), image, slug, snapshot.strokes, exerciseId);
       const saved = toReview(result, selection, (performance.now() - started) / 1000);
       await db.reviews.put(saved); // kept on the iPad: readable later without connection
+      await scored(result);
       setPanel({ kind: "result", review: saved });
     } catch (error) {
       const message = (error as Error).message;
@@ -132,6 +144,12 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
       if (message.startsWith("No se pudo conectar") || message.startsWith("Sin conexión")) await park("No se pudo conectar con el backend.");
       else setPanel({ kind: "error", message });
     }
+  };
+  /** An answer that scored a practice attempt: update the round, and the bank if a mistake was overcome. */
+  const scored = async (response: CheckResponse) => {
+    await followExercise(response.exercise);
+    // Best effort: the bank screen fetches it again anyway.
+    if (response.progress?.overcome) await refreshBank(loadConfig()).catch(() => {});
   };
   /** Apply the backend's answer to the review on screen and to its copy on the iPad. */
   const applyTo = async (review: Review, request: (review: Review) => Promise<CheckResponse>) => {
@@ -141,6 +159,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
     await db.reviews.put(next);
     // A correction can take a saved "mistake" back out of the error bank.
     await followReview(next.id, response.errors);
+    await scored(response);
     // The panel follows only if it is showing this same review.
     setPanel((now) => (now?.kind === "result" && now.review.id === next.id ? { kind: "result", review: next } : now));
   };
@@ -237,6 +256,7 @@ export function CanvasView({ notebookId, onError, onLibrary }: {
         onLibrary={onLibrary}
         menu={menu}
       />
+      {practising && <ExerciseBar key={practising.exercise.id} {...practising} />}
       {pagesOpen && (
         <PagesPanel
           // Remounted when pages change, so it never shows a stale list.

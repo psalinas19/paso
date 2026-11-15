@@ -16,10 +16,20 @@ export function mergeReview(review: Review, response: CheckResponse, totalSecond
     hint: response.hint ?? null,
     explanation: response.explanation ?? null,
     solution: response.solution ?? null,
+    practice: practiceOf(response, review.practice),
     cost_usd: review.cost_usd + response.cost_usd,
     month_spend_usd: response.usage.month_spend_usd,
     budget_usd: response.usage.budget_usd,
   };
+}
+
+/**
+ * The exercise a review attempts, as the backend last described it. The streak
+ * only comes with the call that scored the attempt, so an earlier one is kept.
+ */
+export function practiceOf(response: CheckResponse, before?: Review["practice"]): Review["practice"] {
+  if (!response.exercise) return before;
+  return { exercise: response.exercise, progress: response.progress ?? before?.progress ?? null };
 }
 
 /** Text with `$...$` maths, as the tutor writes it, split into plain and maths runs. */

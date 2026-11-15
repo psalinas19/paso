@@ -67,6 +67,48 @@ export interface BankError {
   created_at: string;
 }
 
+/** One practice exercise (SPEC 6.6) and how the first attempt at it went. Mirrors backend/app/api/practice.py. */
+export interface Exercise {
+  id: string;
+  session_id: string;
+  position: number;
+  /** Prose with `$...$` maths. */
+  statement: string;
+  /** The mistake it goes after. */
+  error_type: string | null;
+  error_label: string | null;
+  topic: string | null;
+  status: "pending" | "passed" | "failed" | "unchecked";
+  /** Exam mode: no help until an attempt was handed in. */
+  exam: boolean;
+  /** The review that decided it. */
+  check_id: string | null;
+  /** The expected result: only once decided, and only if the verifier proved it. */
+  answer_latex: string | null;
+}
+
+/** What an attempt did to the streak of the mistake its exercise targets. */
+export interface PracticeProgress {
+  error_type: string;
+  error_label: string | null;
+  streak: number;
+  needed: number;
+  /** The streak reached `needed`: the bank's entries of this type are now overcome. */
+  overcome: boolean;
+}
+
+/** A round of practice as the backend made it. */
+export interface PracticeResponse {
+  id: string;
+  subject: string;
+  subject_name: string;
+  exam: boolean;
+  created_at: string;
+  exercises: Exercise[];
+  cost_usd: number;
+  usage: UsageSummary;
+}
+
 /** A subject's topics and error types, for the pickers. */
 export interface Taxonomy {
   slug: string;
@@ -119,6 +161,9 @@ export interface CheckResponse {
   solution?: Solution | null;
   /** The steps of this review saved in the error bank. Absent from a backend older than the bank. */
   errors?: BankError[];
+  /** The practice exercise this review attempts, and what the attempt did to its streak. */
+  exercise?: Exercise | null;
+  progress?: PracticeProgress | null;
   /** Cost of this call alone. */
   cost_usd: number;
   /** Seconds this call spent waiting for the model and checking the steps. */
@@ -221,11 +266,13 @@ async function call<T>(config: BackendConfig, path: string, init: RequestInit = 
 
 export const checkHealth = (config: BackendConfig) => call<{ ok: boolean }>(config, "/api/health");
 
-export function postCheck(config: BackendConfig, image: Blob, subject: string, strokes: unknown): Promise<CheckResponse> {
+export function postCheck(config: BackendConfig, image: Blob, subject: string, strokes: unknown, exerciseId?: string): Promise<CheckResponse> {
   const body = new FormData();
   body.append("image", image, "selection.png");
   body.append("subject", subject);
   body.append("strokes", JSON.stringify(strokes));
+  // The page is an attempt at a practice exercise: the backend keeps score.
+  if (exerciseId) body.append("exercise_id", exerciseId);
   return call<CheckResponse>(config, "/api/check", { method: "POST", body });
 }
 
@@ -277,6 +324,13 @@ export function patchError(
 }
 
 export const deleteError = (config: BackendConfig, id: number) => call<{ ok: boolean }>(config, `/api/errors/${id}`, { method: "DELETE" });
+
+/** Ask for a round of practice built on the pending mistakes of a subject. Costs like a review. */
+export function postPractice(config: BackendConfig, request: { subject_name: string; count: number; exam: boolean }): Promise<PracticeResponse> {
+  // A JSON body carries no speed of its own, and this call does reach the model.
+  const effort = SPEEDS.find((s) => s.id === config.speed)?.effort ?? "high";
+  return call<PracticeResponse>(config, "/api/review/generate", json("POST", { ...request, effort }));
+}
 
 export interface ChatMessage {
   role: "user" | "assistant";

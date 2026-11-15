@@ -258,6 +258,18 @@ Cuando una revisión marca un paso con ✕, debajo aparece **Guardar en mi banco
 
 Los tipos de error y los temas de cada materia están en `backend/app/subjects/<materia>.yaml` y se pueden editar.
 
+### Repasar
+
+En **Mis errores**, cada materia con errores pendientes tiene un botón **Repasar**. Eliges cuántos ejercicios (3 a 5) y la app los escribe apuntando a tus errores: más ejercicios para el error que más repites. Cuesta unos centavos, como una revisión.
+
+- Los ejercicios aparecen en un cuaderno **Repaso** de esa materia, uno por página. El enunciado se ve en una barra arriba de la hoja; tócala para plegarla.
+- Escribe el enunciado y tu desarrollo, rodéalos con el lazo y toca **Revisar**, como siempre.
+- **El primer intento es el que cuenta.** Sin errores suma a la racha de ese tipo de error; con un ✕ la racha vuelve a cero. Puedes corregir y revisar otra vez para aprender, pero ya no cambia el resultado.
+- **Tres seguidos sin errores** y ese tipo de error queda como superado en tu banco.
+- Después de entregar, el panel muestra el resultado esperado, solo si se comprobó con matemáticas.
+- **Modo examen** (casilla al empezar): no hay pista, explicación, solución ni chat hasta que entregues un desarrollo de ese ejercicio.
+- En **Mis errores** verás el último repaso de cada materia y un botón para retomarlo donde lo dejaste.
+
 ### Sin conexión
 
 Si tocas **Revisar** sin internet (o con el backend apagado), la selección se guarda en una cola y no se pierde. Cuando vuelva la conexión la app te avisa; para enviarlas, **⋯ → Revisiones en espera**. No se envían solas porque cada una cuesta.
@@ -302,6 +314,6 @@ Hay además un plan pendiente de tu aprobación sobre gestos de la libreta y la 
 
 **Fase 3 construida** (explicación, solución, chat y cola sin conexión), pendiente de probar con el modelo real.
 
-**Fase 4 en curso** ([plan](docs/plan-fase4.md)): el banco de errores está construido. Faltan el modo repaso, la búsqueda en todas las notas, exportar una revisión a LaTeX y graficar.
+**Fase 4 en curso** ([plan](docs/plan-fase4.md)): el banco de errores y el modo repaso están construidos, sin probar con el modelo real ni en el iPad. Faltan la búsqueda en todas las notas, exportar una revisión a LaTeX y graficar.
 
 Después, la Fase 5 (backend en un servidor para no depender de la laptop, respaldo automático, archivar semestres), según el plan por fases de [docs/SPEC.md](docs/SPEC.md) §10.

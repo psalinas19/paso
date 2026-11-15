@@ -13,6 +13,12 @@ export function App() {
   const [notebookId, setNotebookId] = useState<string | null | undefined>(undefined);
   // Which screen is up when no notebook is open.
   const [screen, setScreen] = useState<"library" | "errors">("library");
+  // The page to open the notebook on, when it is opened to practise an exercise.
+  const [startPage, setStartPage] = useState<string | undefined>(undefined);
+  const openAt = (id: string, pageId?: string) => {
+    setStartPage(pageId);
+    setNotebookId(id);
+  };
   const [error, setError] = useState("");
   const [offlineReady, setOfflineReady] = useState(false);
 
@@ -42,9 +48,21 @@ export function App() {
 
   return (
     <>
-      {notebookId && <CanvasView notebookId={notebookId} onError={setError} onLibrary={() => setNotebookId(null)} />}
-      {notebookId === null && screen === "library" && <Library onOpen={setNotebookId} onErrors={() => setScreen("errors")} onError={setError} />}
-      {notebookId === null && screen === "errors" && <ErrorsView onBack={() => setScreen("library")} />}
+      {notebookId && (
+        <CanvasView
+          key={notebookId}
+          notebookId={notebookId}
+          startPageId={startPage}
+          onError={setError}
+          onLibrary={() => {
+            // "Biblioteca" always means the library, also when the notebook was opened from the error bank.
+            setScreen("library");
+            setNotebookId(null);
+          }}
+        />
+      )}
+      {notebookId === null && screen === "library" && <Library onOpen={openAt} onErrors={() => setScreen("errors")} onError={setError} />}
+      {notebookId === null && screen === "errors" && <ErrorsView onBack={() => setScreen("library")} onOpen={openAt} />}
       {error && (
         <div className="banner banner-error" role="alert" onClick={() => setError("")}>
           {error} <span aria-hidden="true">✕</span>

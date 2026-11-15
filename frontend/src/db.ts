@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
-import type { BankError, ChatMessage, CheckResponse, Explanation, Hint, Solution } from "./review/api";
+import type { BankError, ChatMessage, CheckResponse, Exercise, Explanation, Hint, PracticeProgress, Solution } from "./review/api";
 import type { Stroke } from "./strokes/format";
 
 export interface Semester {
@@ -56,6 +56,8 @@ export interface Review {
   solution?: Solution | null;
   /** The conversation with the tutor about this review, kept here to read it offline. */
   chat?: ChatMessage[];
+  /** The practice exercise this review attempts, and what the attempt did to the streak of its mistake. */
+  practice?: { exercise: Exercise; progress?: PracticeProgress | null };
   /** Where the time of the last request went, in seconds; the rest of the wait was network. */
   timing?: { total: number; model: number; verify: number };
   /** Everything this review has cost so far: reading, corrections and hint. */
@@ -76,6 +78,21 @@ export interface QueuedReview {
   /** The selection as a PNG. Kept as bytes: a Blob does not survive every storage engine. */
   image: ArrayBuffer;
   strokes: Stroke[];
+  /** The practice exercise the page attempts, if any. */
+  exercise_id?: string;
+}
+
+/** A round of practice (SPEC 6.6): each exercise lives on a page of a notebook. */
+export interface PracticeRound {
+  /** Same id as the backend's practice session. */
+  id: string;
+  subject_name: string;
+  exam: boolean;
+  created_at: number;
+  /** The notebook its pages were added to. */
+  notebook_id: string;
+  exercises: (Exercise & { page_id: string })[];
+  cost_usd: number;
 }
 
 export const db = new Dexie("paso") as Dexie & {
@@ -88,6 +105,7 @@ export const db = new Dexie("paso") as Dexie & {
   queue: EntityTable<QueuedReview, "id">;
   /** A copy of the error bank, which lives in the backend, to read it offline. */
   errors: EntityTable<BankError, "id">;
+  practice: EntityTable<PracticeRound, "id">;
 };
 
 // Schema changes go in a new .version(n) with an upgrade function; never edit this one.
@@ -113,6 +131,11 @@ db.version(3).stores({
 // v4 (phase 4): the error bank as last fetched. The backend's copy is the one that counts.
 db.version(4).stores({
   errors: "id, check_id, created_at",
+});
+
+// v5 (phase 4): rounds of practice, and which page holds each exercise.
+db.version(5).stores({
+  practice: "id, notebook_id, created_at",
 });
 
 /** Strokes of a page in drawing order. */

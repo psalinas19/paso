@@ -1,6 +1,8 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
-import { db, type Review } from "../db";
+import { db, type PracticeRound, type Review } from "../db";
+import { PracticeDialog } from "../practice/PracticeDialog";
+import { describeRound, resumePage, startRound } from "../practice/rounds";
 import { loadConfig, type BankError, type Taxonomy } from "../review/api";
 import { Latex, Result } from "../review/ReviewPanel";
 import { changeInBank, refreshBank, removeFromBank } from "./bank";
@@ -13,6 +15,8 @@ export type BankStatus = { kind: "loading" } | { kind: "fresh" } | { kind: "stal
 export interface BankActions {
   onChange(id: number, change: { error_type?: string | null; topic?: string | null; resolved?: boolean }): Promise<unknown>;
   onRemove(id: number): Promise<unknown>;
+  /** Start a round of practice for a subject. Absent where it cannot be started. */
+  onPractice?(subjectName: string, count: number, exam: boolean): Promise<void>;
 }
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("es-MX", { dateStyle: "medium" });
@@ -111,14 +115,19 @@ function Entry({ entry, taxonomy, actions }: { entry: BankError; taxonomy: Taxon
 }
 
 /** The screen itself, given the data: what is tested. */
-export function BankScreen({ entries, taxonomy, status, actions, onBack }: {
+export function BankScreen({ entries, taxonomy, status, actions, rounds = [], onBack, onOpen }: {
   entries: BankError[];
   taxonomy: Taxonomy[];
   status: BankStatus;
   actions: BankActions;
+  /** Rounds of practice kept on this iPad, newest first. */
+  rounds?: PracticeRound[];
   onBack(): void;
+  /** Open a notebook on a page: where a round of practice lives. */
+  onOpen?(notebookId: string, pageId: string): void;
 }) {
   const [showResolved, setShowResolved] = useState(false);
+  const [practising, setPractising] = useState<string | null>(null);
   const { subjects, frequent } = summariseBank(entries);
   const resolved = entries.filter((e) => e.resolved).length;
   return (
@@ -163,7 +172,25 @@ export function BankScreen({ entries, taxonomy, status, actions, onBack }: {
             <header>
               <h2>{subject.name}</h2>
               <span className="muted">{describeCounts(subject.open, subject.resolved)}</span>
+              {/* Practice is built from what is still pending; with nothing pending there is nothing to aim at. */}
+              {actions.onPractice && subject.open > 0 && (
+                <button type="button" onClick={() => setPractising(subject.name)}>Repasar</button>
+              )}
             </header>
+            {rounds.filter((round) => round.subject_name === subject.name).slice(0, 1).map((round) => (
+              <p key={round.id} className="round">
+                Último repaso ({day(new Date(round.created_at).toISOString())}): {describeRound(round)}.{" "}
+                {onOpen && <button type="button" className="quiet" onClick={() => onOpen(round.notebook_id, resumePage(round))}>Abrir</button>}
+              </p>
+            ))}
+            {practising === subject.name && actions.onPractice && (
+              <PracticeDialog
+                subjectName={subject.name}
+                pending={subject.open}
+                onStart={(count, exam) => actions.onPractice!(subject.name, count, exam)}
+                onClose={() => setPractising(null)}
+              />
+            )}
             <ul className="types">
               {subject.types.map((type) => (
                 <li key={type.key}>
@@ -189,8 +216,9 @@ export function BankScreen({ entries, taxonomy, status, actions, onBack }: {
 }
 
 /** "Mis errores" (SPEC 6.6): the bank, read from the copy on the iPad and refreshed from the backend. */
-export function ErrorsView({ onBack }: { onBack(): void }) {
+export function ErrorsView({ onBack, onOpen }: { onBack(): void; onOpen(notebookId: string, pageId: string): void }) {
   const entries = useLiveQuery(() => db.errors.toArray());
+  const rounds = useLiveQuery(() => db.practice.orderBy("created_at").reverse().toArray());
   const taxonomy = useTaxonomy();
   const [status, setStatus] = useState<BankStatus>({ kind: "loading" });
   useEffect(() => {
@@ -209,10 +237,16 @@ export function ErrorsView({ onBack }: { onBack(): void }) {
       entries={entries}
       taxonomy={taxonomy}
       status={status}
+      rounds={rounds ?? []}
       onBack={onBack}
+      onOpen={onOpen}
       actions={{
         onChange: (id, change) => changeInBank(loadConfig(), id, change),
         onRemove: (id) => removeFromBank(loadConfig(), id),
+        onPractice: async (subjectName, count, exam) => {
+          const started = await startRound(loadConfig(), subjectName, count, exam);
+          onOpen(started.notebookId, started.pageId);
+        },
       }}
     />
   );

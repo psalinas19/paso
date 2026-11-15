@@ -1,6 +1,6 @@
 # Plan de la Fase 4: banco de errores, repaso, búsqueda, exportar y graficar
 
-**Fecha:** 2026-11-15 · **Estado:** arrancada por indicación tuya («empieza con la fase 4»). Las decisiones de abajo se tomaron con mi recomendación; cualquiera se puede cambiar.
+**Fecha:** 2026-11-15 · **Estado:** arrancada por indicación tuya («empieza con la fase 4»). **4a y 4b construidas** (ADR 0011 y 0012), probadas en navegador con el modelo simulado; faltan 4c, 4d y 4e. Las decisiones de abajo se tomaron con mi recomendación; cualquiera se puede cambiar.
 
 ## Qué cubre
 
@@ -42,6 +42,8 @@ El orden es ese: el banco primero porque el repaso lo necesita, y porque es lo q
 - **4b–4e:** los criterios del SPEC §10: «el repaso genera ejercicios según mis errores reales; una ecuación escrita a mano se grafica correctamente».
 
 ## Decisiones que te tocan (cuando quieras)
+
+Las tres se resolvieron con la recomendación para no detener el trabajo; dime si quieres otra cosa.
 
 1. ¿Prefieres que los errores comprobados se guarden **solos**? Se puede, con un botón «no fue mi error» para quitarlos. No lo recomiendo hasta ver cuántos errores falsos quedan con el modelo real.
 2. En el repaso, ¿los ejercicios se resuelven en un **cuaderno de repaso** aparte por materia, o en una página nueva del cuaderno donde estés? Propongo el cuaderno aparte, para no ensuciar tus apuntes.

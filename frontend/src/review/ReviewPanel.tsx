@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { db, type QueuedReview, type Review } from "../db";
 import { Markdown } from "./markdown";
 import { useTaxonomy } from "../errors/useTaxonomy";
+import { describeAttempt } from "../practice/rounds";
 import { LOW_CONFIDENCE, type BankError, type Explanation, type Hint, type Solution, type Step, type StepStatus, type Taxonomy } from "./api";
 import { describeTiming, splitMath, summarise } from "./merge";
 
@@ -123,6 +124,26 @@ function BankControl({ stepId, proved, entry, taxonomy, actions }: {
       <button type="button" className="link" disabled={busy} onClick={() => run(actions.onRemoveError(entry.id))}>Quitar del banco</button>
       {error && <p className="bad" role="alert">{error}</p>}
     </div>
+  );
+}
+
+/**
+ * The review is an attempt at a practice exercise: how it went, what it did to
+ * the streak, and the expected result once the backend releases it (only after
+ * the attempt, and only if the verifier proved it).
+ */
+function PracticeNote({ practice }: { practice: NonNullable<Review["practice"]> }) {
+  const { tone, text } = describeAttempt(practice.exercise, practice.progress);
+  return (
+    <section className={`practice ${tone}`} aria-label="Repaso">
+      <p>{text}</p>
+      {practice.exercise.answer_latex && (
+        <div className="proved">
+          <h4>Resultado esperado (comprobado con matemáticas)</h4>
+          <Latex source={practice.exercise.answer_latex} />
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -381,10 +402,13 @@ export function Result({ review, actions, bank }: { review: Review; actions?: Re
   const numberOf = (stepId: string) => review.recognition.steps.findIndex((step) => step.id === stepId) + 1;
   const pointed = new Set([review.hint?.step_id, review.explanation?.failing_step_id].filter(Boolean));
   const banked = new Map((bank?.saved ?? []).map((entry) => [entry.step_id, entry]));
+  // Exam mode: no help on an exercise before an attempt at it is handed in. The backend refuses too.
+  const locked = !!review.practice?.exercise.exam && review.practice.exercise.status === "pending";
   return (
     <>
+      {review.practice && <PracticeNote practice={review.practice} />}
       <p className={summary.tone === "idle" ? "idle" : summary.tone}>{summary.text}</p>
-      {actions && <Help key={review.id} review={review} doubtful={doubtful} actions={actions} />}
+      {actions && !locked && <Help key={review.id} review={review} doubtful={doubtful} actions={actions} />}
       {review.hint && <HintSection hint={review.hint} />}
       {review.explanation && <ExplanationSection explanation={review.explanation} numberOf={numberOf} />}
       {review.solution && <SolutionSection solution={review.solution} />}
@@ -447,7 +471,7 @@ export function Result({ review, actions, bank }: { review: Review; actions?: Re
         {review.budget_usd.toFixed(2)} USD
       </p>
       {review.timing && <p className="muted cost">{describeTiming(review.timing)}</p>}
-      {actions ? (
+      {actions && !locked ? (
         <Chat key={`chat-${review.id}`} review={review} onChat={actions.onChat} />
       ) : (
         !!review.chat?.length && (
@@ -534,7 +558,12 @@ function History({ notebookId, onOpen }: { notebookId: string; onOpen: (review: 
 function LiveResult({ review, actions }: { review: Review; actions: ReviewActions }) {
   const saved = useLiveQuery(() => db.errors.where("check_id").equals(review.id).toArray(), [review.id]) ?? [];
   const taxonomy = useTaxonomy();
-  return <Result review={review} actions={actions} bank={{ saved, taxonomy }} />;
+  // The exercise as it stands now: another review of the same page may have decided it since.
+  const attempted = review.practice?.exercise;
+  const round = useLiveQuery(() => (attempted ? db.practice.get(attempted.session_id) : undefined), [attempted?.session_id]);
+  const current = round?.exercises.find((e) => e.id === attempted?.id);
+  const live = review.practice && current ? { ...review, practice: { ...review.practice, exercise: current } } : review;
+  return <Result review={live} actions={actions} bank={{ saved, taxonomy }} />;
 }
 
 /** Side panel: what the model read, step by step, and what the verifier says about each. */

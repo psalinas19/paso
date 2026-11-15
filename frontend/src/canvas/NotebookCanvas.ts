@@ -208,6 +208,8 @@ export class NotebookCanvas {
     private overlay: HTMLCanvasElement,
     private notebookId: string,
     private events: CanvasEvents,
+    /** Open on this page instead of the first one. */
+    startPageId?: string,
   ) {
     this.ictx = ink.getContext("2d")!;
     this.octx = overlay.getContext("2d")!;
@@ -228,6 +230,8 @@ export class NotebookCanvas {
         if (this.disposed) return;
         for (const page of pages) this.pages.push({ page, drawn: [], loaded: false });
         this.applyView(fitWidth(host.clientWidth, host.clientHeight));
+        const start = startPageId ? pages.findIndex((page) => page.id === startPageId) : -1;
+        if (start > 0) this.goToPage(start);
       },
       () => events.onError("No se pudieron cargar las páginas de este cuaderno."),
     );
