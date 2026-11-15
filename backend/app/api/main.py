@@ -40,6 +40,7 @@ from app.api.practice import (
     exercise_of,
     settle,
 )
+from app.api.search import add_search_routes
 from app.cli_common import MissingApiKeyError, build_provider
 from app.config import Settings, get_settings
 from app.db import (
@@ -68,6 +69,7 @@ from app.schemas import (
     Usage,
     VerificationResult,
 )
+from app.search import index_if_empty, reindex
 from app.subjects.loader import SubjectConfig, SubjectNotFoundError, load_subject_cached
 from app.tutor import chat as tutor_chat
 from app.tutor.correction import MAX_LATEX_CHARS, UnknownStepError, correct_step
@@ -135,6 +137,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
     images_dir.mkdir(exist_ok=True)
     migrate(settings.resolved_database_url)
     engine = make_engine(settings.resolved_database_url)
+    index_if_empty(engine)  # reviews made before the search index existed
 
     # One verification process for the life of the server. Starting it and importing
     # SymPy costs seconds on Windows; paying that on every review would eat a third
@@ -346,9 +349,16 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         )
         db.add(row)
         progress = settle(db, row, recognition.steps, verification)
+        reindex(db, row)
         db.commit()
         reading = recognition.usage.latency_ms if recognition.usage and cost else 0
         return respond(db, row, cost, reading, verifying, progress)
+
+    @app.get("/api/checks/{check_id}", dependencies=auth)
+    def read_check(db: Db, check_id: str) -> CheckResponse:
+        """A review as it stands, for a device that does not hold a copy (a search hit)."""
+        row, _ = stored(db, check_id)
+        return respond(db, row, 0.0)
 
     @app.post("/api/checks/{check_id}/steps/{step_id}", dependencies=auth)
     def correct(
@@ -379,7 +389,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
                 ]
                 row.corrected_steps_json = dump_steps(confirmed)
                 db.add(row)
-                db.commit()
+                db.commit()  # same text as before: the search index needs nothing
             return respond(db, row, 0.0)
 
         refuse_over_budget(db)
@@ -405,6 +415,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         follow_correction(db, row.id, updated, verification)
         # If this review decided a practice exercise, the corrected reading decides it again.
         progress = settle(db, row, updated, verification)
+        reindex(db, row)
         db.commit()
         return respond(db, row, cost, usage.latency_ms, verifying, progress)
 
@@ -431,6 +442,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         cost = charge(db, "hint", usage)
         row.hint_json = result.model_dump_json()
         db.add(row)
+        reindex(db, row)
         db.commit()
         return respond(db, row, cost, usage.latency_ms if usage else 0)
 
@@ -482,6 +494,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         row.explanation_json = result.model_dump_json()
         row.max_level_shown = max(row.max_level_shown, 2)
         db.add(row)
+        reindex(db, row)
         db.commit()
         return respond(db, row, cost, usage.latency_ms, sum(spent))
 
@@ -515,6 +528,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         row.solution_json = result.model_dump_json()
         row.max_level_shown = 3
         db.add(row)
+        reindex(db, row)
         db.commit()
         return respond(db, row, cost, sum(u.latency_ms for u in usages), sum(spent))
 
@@ -587,6 +601,9 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
                 later.add(ChatMessage(check_id=check_id, role="user", content=message))
                 later.add(ChatMessage(check_id=check_id, role="assistant", content="".join(answer)))
                 cost = charge(later, "chat", usage)
+                asked = later.get(Check, check_id)
+                if asked is not None:
+                    reindex(later, asked)
                 later.commit()
                 yield sse(
                     "done",
@@ -601,6 +618,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         )
 
     add_error_routes(app, Db, auth)
+    add_search_routes(app, Db, auth)
     add_practice_routes(
         app,
         Db,

@@ -1153,3 +1153,87 @@ def test_a_review_of_an_unknown_exercise_is_refused_before_spending(client, prov
     # A review that attempts no exercise says so by saying nothing.
     plain = post_check(client).json()
     assert plain["exercise"] is None and plain["progress"] is None
+
+
+# --- search (4c) --------------------------------------------------------------
+
+
+def find(client, q):
+    response = client.get("/api/search", headers=AUTH, params={"q": q})
+    assert response.status_code == 200, response.text
+    return response.json()["hits"]
+
+
+def test_a_review_is_found_by_what_it_says_wherever_it_says_it(client, provider):
+    first = post_check(client).json()
+    other = post_check(client, data={"subject": "ed"}).json()
+
+    # Nothing but the transcription exists yet.
+    assert find(client, "saturado") == [] and find(client, "despeja") == []
+
+    ask_hint(client, first["id"])
+    client.post(f"/api/checks/{first['id']}/level/2", headers=AUTH)
+    hits = find(client, "division")  # typed without the accent
+    assert [h["check_id"] for h in hits] == [first["id"]]
+    assert hits[0]["kinds"] == ["hint"] and hits[0]["subject"] == "general"
+    marked = [part["text"] for part in hits[0]["snippet"] if part["hit"]]
+    assert marked == ["división"]
+    shown = "".join(p["text"] for p in hits[0]["snippet"])
+    assert shown.startswith("Revisa la división del paso 3.")
+
+    # The explanation is searchable too, by the start of a word, and every word must match.
+    assert find(client, "ecuac lineal")[0]["kinds"] == ["explanation"]
+    assert find(client, "lineal saturado") == []
+
+    # The chat joins the index when the answer is complete.
+    with client.stream(
+        "POST", f"/api/checks/{other['id']}/chat", headers=AUTH, data={"message": "¿Y la raíz?"}
+    ) as stream:
+        "".join(stream.iter_text())
+    assert [h["check_id"] for h in find(client, "raiz")] == [other["id"]]
+    assert find(client, "raiz")[0]["kinds"] == ["chat"]
+
+
+def test_search_follows_corrections_and_treats_the_query_as_plain_words(client, provider):
+    first = post_check(client).json()
+    # mkstep writes the SymPy text as LaTeX: the reading says "Eq(x, 4)".
+    assert [h["check_id"] for h in find(client, "Eq 4")] == [first["id"]]
+
+    provider.rebuilt = ("Eq(x, 3)", ["s2"])
+    correct(client, first["id"], "s3", "x = 37")
+    assert find(client, "37")[0]["kinds"] == ["steps"]
+
+    # FTS5 operators and punctuation are just characters to us.
+    for odd in ('"', "x AND", "NEAR(", "a* OR b", "\\frac{1}{s}", "col:x"):
+        assert client.get("/api/search", headers=AUTH, params={"q": odd}).status_code in (200, 422)
+    assert client.get("/api/search", headers=AUTH, params={"q": "  ¿? "}).status_code == 422
+    assert client.get("/api/search", headers=AUTH, params={"q": "x" * 201}).status_code == 422
+    assert client.get("/api/search", params={"q": "x"}).status_code == 401
+
+
+def test_reviews_made_before_the_index_existed_are_indexed_at_startup(settings, provider):
+    from sqlalchemy import text
+
+    client = TestClient(create_app(settings, provider))
+    first = post_check(client).json()
+    with Session(make_engine(settings.resolved_database_url)) as db:
+        db.connection().execute(text("DELETE FROM search_index"))
+        db.commit()
+    assert find(client, "Eq") == []
+
+    restarted = TestClient(create_app(settings, provider))
+
+    assert [h["check_id"] for h in find(restarted, "Eq")] == [first["id"]]
+
+
+def test_a_review_can_be_read_back_by_a_device_without_a_copy(client, provider):
+    first = post_check(client).json()
+    ask_hint(client, first["id"])
+    calls = provider.calls
+
+    body = client.get(f"/api/checks/{first['id']}", headers=AUTH).json()
+
+    assert body["id"] == first["id"] and body["hint"]["step_id"] == "s3"
+    assert body["cost_usd"] == 0 and provider.calls == calls
+    assert client.get("/api/checks/nope", headers=AUTH).status_code == 404
+    assert client.get(f"/api/checks/{first['id']}").status_code == 401
