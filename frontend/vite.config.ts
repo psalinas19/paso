@@ -16,8 +16,8 @@ export default defineConfig({
       // woff2 too: the maths fonts must be on the iPad to read a saved review offline.
       workbox: { globPatterns: ["**/*.{js,css,html,woff2}"] },
       manifest: {
-        name: "Paso",
-        short_name: "Paso",
+        name: "Write",
+        short_name: "Write",
         description: "Libreta para iPad que revisa desarrollos de ingeniería",
         lang: "es",
         display: "standalone",

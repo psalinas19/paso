@@ -30,7 +30,7 @@ export function reviewToLatex(review: Review, title = "Revisión"): string {
   const numberOf = (stepId: string) => review.recognition.steps.findIndex((s) => s.id === stepId) + 1;
   const date = new Date(review.created_at || Date.now()).toISOString().slice(0, 10);
   const out: string[] = [
-    `% Generado por Paso a partir de una revisión del ${date}.`,
+    `% Generado por Write a partir de una revisión del ${date}.`,
     "% Lo marcado como comprobado pasó por el verificador simbólico; lo demás es texto del modelo.",
     "\\documentclass[11pt]{article}",
     "\\usepackage[utf8]{inputenc}",

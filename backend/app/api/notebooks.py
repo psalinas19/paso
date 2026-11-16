@@ -94,7 +94,7 @@ def add_notebook_routes(app: FastAPI, Db, auth: list, folder: Path) -> None:
         pages = export.get("pages")
         notebook = export.get("notebook")
         if export.get("format") != "paso-notebook" or not isinstance(pages, list):
-            raise HTTPException(422, "Eso no es un respaldo de cuaderno de Paso.")
+            raise HTTPException(422, "Eso no es un respaldo de cuaderno de Write.")
         if not isinstance(notebook, dict) or notebook.get("id") != notebook_id:
             raise HTTPException(422, "El respaldo es de otro cuaderno.")
         if not all(isinstance(p, dict) and isinstance(p.get("strokes"), list) for p in pages):

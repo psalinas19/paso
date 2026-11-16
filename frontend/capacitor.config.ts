@@ -4,7 +4,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // The bundle id must be unique per Apple account; change it in Xcode if it is taken.
 const config: CapacitorConfig = {
   appId: "app.paso.libreta",
-  appName: "Paso",
+  appName: "Write",
   webDir: "dist",
   ios: {
     // The page handles the notch itself with env(safe-area-inset-*).

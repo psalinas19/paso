@@ -130,7 +130,7 @@ export function Library({ onOpen, onErrors, onSearch, onError }: Props) {
   return (
     <main className="library">
       <header className="top">
-        <h1>Paso</h1>
+        <h1>Write</h1>
         <button type="button" className="quiet" onClick={onSearch}>Buscar</button>
         <button type="button" onClick={onErrors}>{data.pending ? `Mis errores (${data.pending})` : "Mis errores"}</button>
       </header>

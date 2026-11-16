@@ -78,7 +78,7 @@ function readStroke(raw: unknown, pageId: string, where: string, keepId = false)
 export async function importNotebook(data: unknown, subjectId: string): Promise<string> {
   const file = data as Partial<NotebookExport> | null;
   if (!file || typeof file !== "object" || file.format !== "paso-notebook") {
-    throw new ImportError("Ese archivo no es un respaldo de cuaderno de Paso.");
+    throw new ImportError("Ese archivo no es un respaldo de cuaderno de Write.");
   }
   if (file.format_version !== EXPORT_FORMAT_VERSION) {
     throw new ImportError(`El respaldo es de un formato (versión ${String(file.format_version)}) que esta versión de la app no conoce.`);
@@ -125,7 +125,7 @@ export async function importNotebook(data: unknown, subjectId: string): Promise<
 export async function restoreNotebook(data: unknown, notebookId: string): Promise<void> {
   const file = data as Partial<NotebookExport> | null;
   if (!file || typeof file !== "object" || file.format !== "paso-notebook" || !Array.isArray(file.pages)) {
-    throw new ImportError("Lo que devolvió el servidor no es un respaldo de cuaderno de Paso.");
+    throw new ImportError("Lo que devolvió el servidor no es un respaldo de cuaderno de Write.");
   }
   if (file.format_version !== EXPORT_FORMAT_VERSION) {
     throw new ImportError(`El respaldo es de un formato (versión ${String(file.format_version)}) que esta versión de la app no conoce.`);
@@ -161,7 +161,7 @@ export async function importNotebookFile(file: Blob, subjectId: string): Promise
   try {
     data = JSON.parse(await file.text());
   } catch {
-    throw new ImportError("Ese archivo no es un respaldo de cuaderno de Paso.");
+    throw new ImportError("Ese archivo no es un respaldo de cuaderno de Write.");
   }
   return importNotebook(data, subjectId);
 }

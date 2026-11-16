@@ -1,6 +1,8 @@
-# Paso
+# Write
 
 Libreta inteligente para iPad que revisa, corrige y explica desarrollos de ingeniería escritos a mano.
+
+Antes se llamaba «Paso»: ese nombre sigue en la dirección publicada, en el repositorio y en los nombres de archivos y de la base de datos, que no se cambian para no perder datos.
 
 El spec completo está en [docs/SPEC.md](docs/SPEC.md). Las decisiones de diseño, en [docs/decisions/](docs/decisions/).
 

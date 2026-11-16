@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Contexto para Claude Code. El spec manda: [docs/SPEC.md](docs/SPEC.md). Trabaja **una fase a la vez** (§10), presenta plan y espera aprobación al iniciar cada fase.
+Contexto para Claude Code. La app se llama **Write** (antes «Paso»; ver regla 45). El spec manda: [docs/SPEC.md](docs/SPEC.md). Trabaja **una fase a la vez** (§10), presenta plan y espera aprobación al iniciar cada fase.
 
 ## Comandos
 
@@ -142,6 +142,8 @@ frontend/ios/                 proyecto de Xcode generado por Capacitor; PencilPl
 42. **La retención del almacenamiento externo se decide leyendo su propio listado**, nunca con `rclone sync` desde este disco: un servidor recién creado tiene la carpeta vacía y lo vaciaría.
 43. **El contenedor solo escribe en `/data` y `/backups`**, con usuario sin privilegios. Todo archivo temporal va ahí (lo encontró la prueba de restauración). Cambios en `backend/Dockerfile` o `app/backup.py` se prueban con `deploy/prueba-restauracion.sh`, no solo con pytest.
 44. **`/api/ping` es la única ruta sin token** y no debe decir nada más que `{"ok": true}`.
+
+45. **La app se llama «Write»; por dentro sigue siendo `paso`.** Solo cambió lo que el usuario lee (título, manifiesto, biblioteca, nombre de la app nativa, mensajes). No renombres la dirección publicada (regla 10), la base `paso` de Dexie, las claves `paso:*` de `localStorage`, el formato `paso-notebook` ni la extensión `.paso.json`, `paso.db`, los respaldos `paso-*.tar.gz`, el `appId` de Capacitor ni el repositorio: cada uno de esos nombres está en datos ya guardados. Y «paso» también es la palabra para un renglón del desarrollo: «Paso 3» no es el nombre de la app.
 
 ## Idioma
 

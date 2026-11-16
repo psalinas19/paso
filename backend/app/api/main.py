@@ -210,7 +210,7 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
         stop.set()
         worker.close()
 
-    app = FastAPI(title="Paso", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(title="Write", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.origins,

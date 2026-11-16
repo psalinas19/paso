@@ -211,10 +211,10 @@ def restore(settings: Settings, archive: Path, force: bool = False) -> Path | No
                 # "data": no absolute paths, no "..", no links out, no devices.
                 tar.extractall(work, filter="data")
         except (tarfile.TarError, OSError) as exc:
-            raise BackupError(f"El respaldo está dañado o no es de Paso: {exc}") from exc
+            raise BackupError(f"El respaldo está dañado o no es de Write: {exc}") from exc
         unpacked = Path(work)
         if not (unpacked / MANIFEST).is_file():
-            raise BackupError("El archivo no es un respaldo de Paso (no trae manifest.json).")
+            raise BackupError("El archivo no es un respaldo de Write (no trae manifest.json).")
         if (unpacked / DATABASE).exists():
             with contextlib.closing(sqlite3.connect(unpacked / DATABASE)) as check:
                 if check.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
