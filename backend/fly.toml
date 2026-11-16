@@ -6,7 +6,7 @@
 #   fly deploy
 #
 # The name you created the app with. It becomes <name>.fly.dev.
-app = "paso-backend"
+app = "write-pakal"
 # qro is Querétaro, the closest to Mexico City. Compute prices differ by region.
 primary_region = "qro"
 

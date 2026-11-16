@@ -45,7 +45,7 @@ fly auth login
 2. Crea la app con un nombre tuyo; será `ese-nombre.fly.dev` y tiene que ser único en todo Fly:
 
 ```powershell
-fly apps create paso-tunombre
+fly apps create write-pakal
 ```
 
 Pon ese mismo nombre en `backend\fly.toml`, en la línea `app = "..."`.
@@ -73,7 +73,7 @@ fly deploy
 6. Comprueba que responde (debe decir `{"ok":true}`):
 
 ```powershell
-curl https://paso-tunombre.fly.dev/api/ping
+curl https://write-pakal.fly.dev/api/ping
 ```
 
 El límite de gasto, el modelo y lo demás se cambian en `backend\fly.toml`, sección `[env]`, y se aplican con otro `fly deploy`.
@@ -130,7 +130,7 @@ fly ssh console -C "sh -c 'python -m app.backup restore /data/backups/paso-*.tar
 ```
 
 ```powershell
-fly apps restart paso-tunombre
+fly apps restart write-pakal
 ```
 
 Con Docker (opción B), desde `deploy/`:
@@ -151,7 +151,7 @@ docker compose up -d
 
 ## 3. Apuntar el iPad al servidor
 
-En la libreta: abre un cuaderno → **⋯ → Ajustes de revisión…** → pon la dirección nueva (`https://paso-tunombre.fly.dev` o la de tu dominio) y el token → **Probar conexión**.
+En la libreta: abre un cuaderno → **⋯ → Ajustes de revisión…** → pon la dirección nueva (`https://write-pakal.fly.dev` o la de tu dominio) y el token → **Probar conexión**.
 
 El mensaje de la prueba dice también cómo va el respaldo del servidor. Debe decir «con copia fuera del servidor». Si dice «SIN copia fuera del servidor», revisa las variables del paso 1.
 
