@@ -55,7 +55,7 @@ Se usa `fly apps create` y no `fly launch` a propósito: `launch` revisa el proy
 3. Crea el disco donde vivirán los datos:
 
 ```powershell
-fly volumes create paso_data --size 3 --region qro
+fly volumes create paso_data --size 3 --region dfw
 ```
 
 4. Guarda los secretos. `APP_TOKEN` puede ser el mismo que ya usas en el iPad. Agrega aquí también las siete variables del paso 1:

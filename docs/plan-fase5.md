@@ -34,7 +34,7 @@ Los precios los consulté el 2026-11-15, pero **no pude abrir las páginas ofici
 | HTTPS y dirección | Incluidos: `tu-nombre.fly.dev` | Caddy lo pone solo, pero necesitas un nombre: gratis con DuckDNS o un dominio (≈ 10 USD al año) |
 | Cómo se despliega | Un comando desde tu Windows: `fly deploy` | Por SSH: `docker compose up -d --build` |
 | Mantenimiento | Casi ninguno | Tú actualizas el sistema y cuidas el acceso por SSH |
-| Dónde corre | Hay región en Querétaro | Estados Unidos |
+| Dónde corre | Dallas (Fly retiró Querétaro para apps nuevas) | Estados Unidos |
 | Lo malo | Se cobra por uso: la cuenta varía un poco. No hay capa gratuita. | Es un servidor más que cuidar. Si lo descuidas, es un riesgo. |
 
 **Recomiendo la A.** Cuesta menos, no hay un Linux que mantener y se despliega desde Windows con un comando. Medí el contenedor: usa unos 190 MB con el verificador caliente, así que la máquina de 512 MB alcanza.

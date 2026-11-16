@@ -1,14 +1,15 @@
 # Paso on Fly.io (option A of docs/despliegue.md). From backend/:
 #
 #   fly apps create <a-name-of-yours>      (then put that name in `app` below)
-#   fly volumes create paso_data --size 3 --region qro
+#   fly volumes create paso_data --size 3 --region dfw
 #   fly secrets set ANTHROPIC_API_KEY=... APP_TOKEN=...
 #   fly deploy
 #
 # The name you created the app with. It becomes <name>.fly.dev.
 app = "write-pakal"
-# qro is Querétaro, the closest to Mexico City. Compute prices differ by region.
-primary_region = "qro"
+# dfw is Dallas, the closest region to Mexico City that takes new apps (Fly
+# retired qro, Querétaro, for new resources). Compute prices differ by region.
+primary_region = "dfw"
 
 [build]
   dockerfile = "Dockerfile"
