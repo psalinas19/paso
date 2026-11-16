@@ -30,17 +30,27 @@ RCLONE_CONFIG_R2_NO_CHECK_BUCKET=true
 
 Desde `backend\` en tu Windows.
 
-1. Instala `flyctl` y entra a tu cuenta (te pedirá una tarjeta):
+1. Instala `flyctl` (cierra y vuelve a abrir PowerShell después, para que reconozca el comando `fly`):
+
+```powershell
+powershell -Command "iwr https://fly.io/install.ps1 -useb | iex"
+```
+
+Luego entra a tu cuenta (abre el navegador):
 
 ```powershell
 fly auth login
 ```
 
-2. Crea la app con un nombre tuyo (será `ese-nombre.fly.dev`). No despliega todavía:
+2. Crea la app con un nombre tuyo; será `ese-nombre.fly.dev` y tiene que ser único en todo Fly:
 
 ```powershell
-fly launch --no-deploy --copy-config --name paso-tunombre --region qro
+fly apps create paso-tunombre
 ```
+
+Pon ese mismo nombre en `backend\fly.toml`, en la línea `app = "..."`.
+
+Se usa `fly apps create` y no `fly launch` a propósito: `launch` revisa el proyecto y puede reescribir `fly.toml`, que ya viene listo.
 
 3. Crea el disco donde vivirán los datos:
 
